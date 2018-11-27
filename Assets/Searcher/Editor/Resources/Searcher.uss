@@ -1,0 +1,221 @@
+﻿#windowMainVisualContainer {
+    flex: 1;
+    flex-direction: row;
+    background-color: #272727;
+}
+
+#windowMainVisualContainer * {
+    font: resource("FlatSkin/Font/Roboto-Regular");
+}
+
+#windowResizer {
+    position: absolute;
+    height: 20;
+    width: 20;
+    bottom: 0;
+    right: 0;
+    padding-left: 10;
+    padding-top: 14;
+    cursor: resize-up-left;
+}
+
+#windowResizerIcon {
+    flex: 1;
+    background-image:resource("WindowBottomResize");
+    cursor: resize-up-left;
+}
+
+#searcherVisualContainer {
+    flex: 1;
+}
+
+#windowTitleLabel {
+    font-size: 14;
+    text-color: #FFFFFF;
+    margin-top: 5;
+    margin-left: 6;
+}
+
+#windowSearchBoxVisualContainer {
+    height: 21;
+    background-color: #454545;
+    margin-right: 3;
+    margin-left: 5;
+    margin-top: 0;
+    margin-bottom: 6;
+    border-radius: 6;
+    border-color: #323232;
+    border-right-width: 1;
+    border-top-width: 1;
+    border-left-width: 1;
+    border-bottom-width: 1;
+}
+
+#searchIcon {
+    width: 32;
+    height: 16;
+    background-image:resource("FlatSkin/SearchSmallDownOff");
+    top: 2;
+    left: 4;
+    margin-right: 2;
+}
+
+#searchIcon.Active {
+    background-image:resource("FlatSkin/SearchSmallDownOn");
+}
+
+#autoCompleteLabel {
+    position: absolute;
+    background-image: none;
+    top: 3;
+    left: 38;
+    font-size: 10;
+    font-style: bold;
+    text-color: #828282;
+    text-alignment: middle-left;
+}
+
+#searchBox {
+    background-image: none;
+    position-type: absolute;
+    top: 2;
+    left: 34;
+    right: 0;
+    bottom: 0;
+    font-size: 10;
+    text-color: #FFFFFF;
+}
+
+#searchBox .unity-base-field__input {
+    padding-top: 0;
+    font-size: 10;
+    font-style: bold;
+    text-alignment: middle-left;
+    text-color: #FFFFFF;
+    background-image: none;
+}
+
+#windowSelectionVisualContainer {
+    flex-direction: row;
+    flex: 1;
+}
+
+.unity-list-view.focusableScrollView {
+    flex: 1;
+}
+
+.unity-list-view {
+    background-color: #383838;
+    -unity-item-height: 18;
+}
+
+.unity-list-view > * {
+    position-left: 15;
+}
+
+.unity-list-view > * #labelsContainer {
+    flex-direction: row;
+    flex: 1;
+    left: 8;
+}
+
+.unity-list-view > * #labelsContainer > .unity-label {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    text-color: #C4C4C4;
+    font-size: 11;
+}
+
+.unity-list-view > * > .unity-label {
+    flex: 1;
+}
+
+#smartSearchItem > #itemMainVisualContainer > #labelsContainer > .unity-label.Highlighted {
+    color: #FFCD62;
+}
+
+.unity-list-view > * > #smartSearchItem:hover * {
+    background-color: #424242;
+}
+
+.unity-list-view > * > #smartSearchItem.unity-list-view__item--selected * {
+    background-color: #2B5D87;
+}
+
+#smartSearchItem.unity-list-view__item--selected > #itemMainVisualContainer > #labelsContainer > .unity-label {
+    text-color : #FFFFFF;
+}
+
+#smartSearchItem.unity-list-view__item--selected > #itemMainVisualContainer > #labelsContainer > .unity-label.Highlighted {
+    color: #FFCD00;
+}
+
+.unity-list-view > * #itemChildExpander {
+    width: 18;
+    height: 18;
+}
+
+.unity-list-view > * #itemChildExpander > #expanderIcon {
+    width: 10;
+    height: 10;
+    top: 2;
+    left: 10;
+}
+
+#smartSearchItem > * > #itemChildExpander > #expanderIcon.Collapsed {
+    background-image: resource("FlatSkin/SearchRightOff");
+}
+
+#smartSearchItem > * > #itemChildExpander > #expanderIcon.Expanded {
+    background-image: resource("FlatSkin/SearchDownOff");
+}
+
+#smartSearchItem.unity-list-view__item--selected > * > #itemChildExpander > #expanderIcon.Collapsed {
+    background-image: resource("FlatSkin/SearchRightOn");
+}
+
+#smartSearchItem.unity-list-view__item--selected > * > #itemChildExpander > #expanderIcon.Expanded {
+    background-image: resource("FlatSkin/SearchDownOn");
+}
+
+.unity-list-view > * #itemMainVisualContainer {
+    flex-direction: row;
+    flex: 1;
+}
+
+.unity-list-view > *.unity-list-view__item--selected #textLabel {
+    color: #FFFFFF;
+}
+
+.unity-list-view > * #itemMainVisualContainer {
+    padding-top: 3;
+    align-items: center;
+}
+
+.unity-list-view > *.Category #textLabel {
+    font-size: 12;
+    color: #676767;
+}
+
+#windowDetailsVisualContainer {
+    flex: 1;
+    background-color: #383838;
+    border-left-width: 2;
+    border-color: #272727;
+    padding-left: 6;
+    padding-right: 4;
+    padding-top: 4;
+}
+
+#windowDetailsVisualContainer.hidden {
+    display:none;
+}
+
+#windowDetailsVisualContainer > .unity-label {
+    font-size: 11;
+    font-style: bold;
+    color: #C4C4C4;
+    white-space: normal;
+}
