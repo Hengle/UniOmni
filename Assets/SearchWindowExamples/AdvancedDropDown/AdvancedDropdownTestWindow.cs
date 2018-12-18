@@ -216,10 +216,12 @@ public class AdvancedDropdownTestWindow : EditorWindow
         MyEnum30,
     }
 
+
     class MyDropdown : AdvancedDropdown
     {
         public MyDropdown(AdvancedDropdownState state) : base(state)
         {
+            // This is internal api: 
             // m_DataSource = new MultiLevelDataSource(m_SearchablePopupValuesMultilevel);
         }
 
