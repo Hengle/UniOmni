@@ -265,16 +265,12 @@ namespace Omni
 
             public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField)
             {
-                name = "omni-tool-search-field",
-                
-                //margin = new RectOffset(4, 0, 4, 4)
+                name = "omni-tool-search-field"
             };
 
             public static readonly GUIStyle searchFieldClear = new GUIStyle("ToolbarSeachCancelButton")
             {
-                name = "omni-tool-search-field-clear",
-
-                //margin = new RectOffset(4, 0, 4, 4)
+                name = "omni-tool-search-field-clear"
             };
 
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
