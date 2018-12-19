@@ -1,68 +1,18 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Lucene.Net.Store;
-using Omni;
 using UnityEditor;
-using UnityEditor.IMGUI.Controls;
 using UnityEditor.ShortcutManagement;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace Omni
-{
-    /** Potential types of provider:
-        
-        Menu items (with subcatagory?)
-            Settings
-            Preferences
-            Windows
-            Actions
-            
-        Assets (if it possible to reuse part of the assetdatabase search feature?)
-        Scene objects
-
-        API URL
-        Tutorial?
-
-        Immediate Window provider (with public unity api)
-
-        Command Evaluator (shell style)
-
-        Asset Store items?
-    */
-
-    /*
-    [OmniEvaluateurOptions("asset")]
-    internal static OmniEvalOptions[] AssetDatabaseItemProviderOptions()
-    {
-        return new OmniEvalOptions[] { new OmniEvalOptions() { content = GUIContent("open", "open_icon.png", "open tooltip"), handler = AssetDatabaseItemProviderEvaluator1 } };
-    }
-    */
-
-    /*
-    // # Selection.activeObject ($)
-    [OmniCommand("#")]
-    internal static void OmniShellCommander(string context)
-    {
-    ...
-    }
-
-    [OmniCommand(">", "selection", typeof(int), typeof(string), ...)]
-    internal static void OmniShellCommander(string context)
-    {
-        ...
-    }
-    */
-
-    public delegate Texture2D PreviewHandler(Item item, Context context);
-    public delegate void ActionHandler(Item item, Context context);
-    public delegate bool EnabledHandler(Item item, Context context);
-    public delegate IEnumerable<Item> GetItemsHandler(Context context);
+{ 
+    public delegate Texture2D PreviewHandler(OmniItem item, OmniContext context);
+    public delegate void ActionHandler(OmniItem item, OmniContext context);
+    public delegate bool EnabledHandler(OmniItem item, OmniContext context);
+    public delegate IEnumerable<OmniItem> GetItemsHandler(OmniContext context);
 
     public class OmniAction
     {
@@ -86,22 +36,22 @@ namespace Omni
         public EnabledHandler isEnabled;
     }
 
-    public struct Item
+    public struct OmniItem
     {
         public string id;
         public string label;
         public string description;
         public int instanceID;
-        public Provider provider;
+        public OmniProvider provider;
     }
 
-    public class Provider
+    public class OmniProvider
     {
-        public Provider(string type)
+        public OmniProvider(string type)
         {
             this.type = type;
             actions = new List<OmniAction>();
-            fetchItems = (context) => new Item[0];
+            fetchItems = (context) => new OmniItem[0];
             generatePreview = (item, context) => null;
         }
 
@@ -111,51 +61,24 @@ namespace Omni
         public List<OmniAction> actions;
     }
 
-    public struct Context
+    public struct OmniContext
     {
         public string searchText;
         public EditorWindow focusedWindow;
     }
 
-    public class ItemProviderAttribute : Attribute
+    public class OmniItemProviderAttribute : Attribute
     {
     }
 
-    public class ActionsProviderAttribute : Attribute
+    public class OmniActionsProviderAttribute : Attribute
     {
     }
-
-    /**
-        Flat list with action bar
-        
-        filter according to provider type and subcategory (tree of filter switches)
-        Assets
-            CSharp
-            Textures
-        Menu
-            Window
-            Settings
-            Preferences
-        GameObject
-            tags
-                player...
-            layer
-                background
-
-        History panel
-            list of recently searched terms
-
-        Favorites
-            Could potentially want boxes/folders of favorites
-            would allow a user to reorganize its preferred menu item(s)?
-            Create selection group?
-
-     */
 
     public static class OmniService
     {
-        static List<Provider> s_Providers;
-        public static List<Provider> Providers
+        static List<OmniProvider> s_Providers;
+        public static List<OmniProvider> Providers
         {
             get
             {
@@ -170,16 +93,16 @@ namespace Omni
 
         public static void FetchProviders()
         {
-            s_Providers = GetAllMethodsWithAttribute(typeof(ItemProviderAttribute)).Select(methodInfo => methodInfo.Invoke(null, null) as Omni.Provider).Where(provider => provider != null).ToList();
+            s_Providers = GetAllMethodsWithAttribute(typeof(OmniItemProviderAttribute)).Select(methodInfo => methodInfo.Invoke(null, null) as Omni.OmniProvider).Where(provider => provider != null).ToList();
 
-            foreach (var action in GetAllMethodsWithAttribute(typeof(ActionsProviderAttribute)).SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
+            foreach (var action in GetAllMethodsWithAttribute(typeof(OmniActionsProviderAttribute)).SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
             {
                 var provider = s_Providers.Find(p => p.type == action.type);
                 provider?.actions.Add(action);
             }
         }
 
-        public static IEnumerable<Item> GetItems(Context context)
+        public static IEnumerable<OmniItem> GetItems(OmniContext context)
         {
             return Providers.SelectMany(provider => provider.fetchItems(context).Select(item =>
             {
@@ -211,12 +134,12 @@ namespace Omni
         [SerializeField]
         Vector2 m_Scroll;
 
-        IEnumerable<Item> m_FilteredItems;
+        IEnumerable<OmniItem> m_FilteredItems;
 
         // public override void OnGUI(Rect rect)
         public void OnGUI()
         {
-            var context = new Context() { searchText = m_SearchText, focusedWindow = m_FocusedWindow };
+            var context = new OmniContext() { searchText = m_SearchText, focusedWindow = m_FocusedWindow };
             EditorGUI.BeginChangeCheck();
             m_SearchText = EditorGUILayout.TextField(m_SearchText);
             if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
@@ -314,50 +237,50 @@ namespace Omni
             */
         }
     }
-}
 
-namespace OmniAssetItem
-{
-    static class AssetProvider
+
+    namespace Providers
     {
-        [Omni.ItemProvider]
-        static Omni.Provider CreateProvider()
+        static class AssetProvider
         {
-            return new Provider("asset")
+            [OmniItemProvider]
+            static OmniProvider CreateProvider()
             {
-                fetchItems = (context) =>
+                return new OmniProvider("asset")
                 {
-                    return AssetDatabase.FindAssets(context.searchText).Select(guid =>
+                    fetchItems = (context) =>
                     {
-                        var path = AssetDatabase.GUIDToAssetPath(guid);
-                        return new Item()
+                        return AssetDatabase.FindAssets(context.searchText).Select(guid =>
                         {
-                            id = path,
-                            label = Path.GetFileName(path),
-                            description = path
-                        };
-                    });
-                },
+                            var path = AssetDatabase.GUIDToAssetPath(guid);
+                            return new OmniItem()
+                            {
+                                id = path,
+                                label = Path.GetFileName(path),
+                                description = path
+                            };
+                        });
+                    },
 
-                generatePreview = (item, context) =>
-                {
-                    var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
-                    if (obj != null)
-                        return AssetPreview.GetMiniThumbnail(obj);
-                    return null;
-                }
-            };
-        }
+                    generatePreview = (item, context) =>
+                    {
+                        var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
+                        if (obj != null)
+                            return AssetPreview.GetMiniThumbnail(obj);
+                        return null;
+                    }
+                };
+            }
 
-        [Omni.ActionsProvider]
-        static IEnumerable<OmniAction> ActionHandlers()
-        {
-            // Select
-            // Open
-            // Show in Explorer
-            // Copy path
-            return new []
+            [OmniActionsProvider]
+            static IEnumerable<OmniAction> ActionHandlers()
             {
+                // Select
+                // Open
+                // Show in Explorer
+                // Copy path
+                return new[]
+                {
                 new OmniAction("asset", "select") { handler = (item, context) =>
                 {
                     var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
@@ -376,60 +299,56 @@ namespace OmniAssetItem
                     }
                 }}
             };
+            }
         }
-    }
-}
 
-
-namespace OmniMenuItem
-{
-    static class MenuProvider
-    {
-
-        [Omni.ItemProvider]
-        static Omni.Provider CreateProvider()
+        static class MenuProvider
         {
-            return new Provider("menu")
+            [OmniItemProvider]
+            static Omni.OmniProvider CreateProvider()
             {
-                fetchItems = (context) =>
+                return new OmniProvider("menu")
                 {
-                    var itemNames = new List<string>();
-                    var shortcuts = new List<string>();
-                    GetMenuInfo(itemNames, shortcuts);
-
-                    return itemNames.Select(menuName => new Item()
+                    fetchItems = (context) =>
                     {
-                        id = menuName,
-                        description = menuName,
-                        label = Path.GetFileName(menuName)
-                    });
-                }
-            };
-        }
+                        var itemNames = new List<string>();
+                        var shortcuts = new List<string>();
+                        GetMenuInfo(itemNames, shortcuts);
 
-        [Omni.ActionsProvider]
-        static IEnumerable<OmniAction> ActionHandlers()
-        {
-            // Select
-            // Open
-            // Show in Explorer
-            // Copy path
-            return new[]
+                        return itemNames.Select(menuName => new OmniItem()
+                        {
+                            id = menuName,
+                            description = menuName,
+                            label = Path.GetFileName(menuName)
+                        });
+                    }
+                };
+            }
+
+            [OmniActionsProvider]
+            static IEnumerable<OmniAction> ActionHandlers()
             {
-                new OmniAction("menu", "exec") { handler = (item, context) =>
+                // Select
+                // Open
+                // Show in Explorer
+                // Copy path
+                return new[]
                 {
-                    EditorApplication.ExecuteMenuItem(item.id);
-                }}
-            };
-        }
+                    new OmniAction("menu", "exec") { handler = (item, context) =>
+                    {
+                        EditorApplication.ExecuteMenuItem(item.id);
+                    }}
+                };
+            }
 
-        private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)
-        {
-            Assembly assembly = typeof(Menu).Assembly;
-            var managerType = assembly.GetTypes().First(t => t.Name == "Menu");
-            var method = managerType.GetMethod("GetMenuItemDefaultShortcuts", BindingFlags.NonPublic | BindingFlags.Static);
-            var arguments = new object[] { outItemNames, outItemDefaultShortcuts };
-            method.Invoke(null, arguments);
+            private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)
+            {
+                Assembly assembly = typeof(Menu).Assembly;
+                var managerType = assembly.GetTypes().First(t => t.Name == "Menu");
+                var method = managerType.GetMethod("GetMenuItemDefaultShortcuts", BindingFlags.NonPublic | BindingFlags.Static);
+                var arguments = new object[] { outItemNames, outItemDefaultShortcuts };
+                method.Invoke(null, arguments);
+            }
         }
     }
 }
