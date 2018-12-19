@@ -515,7 +515,9 @@ namespace Omni
 
             public static readonly GUIStyle toolbar = new GUIStyle("Toolbar")
             {
-                name = "omni-tool-bar"
+                name = "omni-tool-bar",
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(4, 0, 0, 0)
             };
                 
 
@@ -703,7 +705,6 @@ namespace Omni
                                 Repaint();
                             }
 
-                            GUI.FocusControl("Item" + m_SelectedIndex);
                             m_FocusSelectedItem = false;
                         }
                     }
