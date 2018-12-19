@@ -412,7 +412,11 @@ namespace Omni
         [SerializeField] private string m_SearchText;
         [SerializeField] private Vector2 m_ScrollPosition;
         [SerializeField] public EditorWindow lastFocusedWindow;
+        [SerializeField] private bool m_OmniSearchBoxFocus;
+        [SerializeField] private int m_SelectedIndex = -1;
         private IEnumerable<OmniItem> m_FilteredItems;
+        private bool m_FocusSelectedItem = false;
+        private Rect m_ScrollViewOffset;
 
         static class Styles
         {
@@ -432,6 +436,9 @@ namespace Omni
 
             private static readonly Texture2D debugBackgroundImage = GenerateSolidColorTexture(new Color(1f, 0f, 0f));
             private static readonly Texture2D alternateRowBackgroundImage = GenerateSolidColorTexture(new Color(61/255f, 61/255f, 61/255f));
+            private static readonly Texture2D selectedRowBackgroundImage = GenerateSolidColorTexture(new Color(61/255f, 96/255f, 145/255f));
+            private static readonly Texture2D selectedHoveredRowBackgroundImage = GenerateSolidColorTexture(new Color(71/255f, 106/255f, 155/255f));
+            private static readonly Texture2D hoveredRowBackgroundImage = GenerateSolidColorTexture(new Color(68/255f, 68/255f, 71/255f));
             private static readonly Texture2D buttonPressedBackgroundImage = GenerateSolidColorTexture(new Color(111/255f, 111/255f, 111/255f));
             private static readonly Texture2D buttonHoveredBackgroundImage = GenerateSolidColorTexture(new Color(71/255f, 71/255f, 71/255f));
 
@@ -443,18 +450,22 @@ namespace Omni
                 fixedHeight = itemRowHeight,
 
                 margin = marginNone,
-                padding = defaultPadding
-            };
-
-            public static readonly GUIStyle itemBackground2 = new GUIStyle
-            {
-                name = "omni-tool-item-background2",
-                fixedHeight = itemRowHeight,
-
-                margin = marginNone,
                 padding = defaultPadding,
 
+                hover = new GUIStyleState { background = hoveredRowBackgroundImage, scaledBackgrounds = new[] { hoveredRowBackgroundImage } }
+            };
+
+            public static readonly GUIStyle itemBackground2 = new GUIStyle(itemBackground1)
+            {
+                name = "omni-tool-item-background2",
                 normal = new GUIStyleState { background = alternateRowBackgroundImage, scaledBackgrounds = new[] { alternateRowBackgroundImage } }
+            };
+
+            public static readonly GUIStyle selectedItemBackground = new GUIStyle(itemBackground1)
+            {
+                name = "omni-tool-item-selected-background",
+                normal = new GUIStyleState { background = selectedRowBackgroundImage, scaledBackgrounds = new[] { selectedRowBackgroundImage } },
+                hover = new GUIStyleState { background = selectedHoveredRowBackgroundImage, scaledBackgrounds = new[] { selectedHoveredRowBackgroundImage } }
             };
 
             public static readonly GUIStyle preview = new GUIStyle
@@ -471,7 +482,7 @@ namespace Omni
             {
                 name = "omni-tool-item-label",
 
-                margin = new RectOffset(4, 4, 7, 2),
+                margin = new RectOffset(4, 4, 6, 2),
                 padding = paddingNone
             };
 
@@ -482,7 +493,7 @@ namespace Omni
                 margin = new RectOffset(4, 4, 1, 4),
                 padding = paddingNone,
 
-                fontSize = itemLabel.fontSize - 3,
+                fontSize = itemLabel.fontSize - 2,
                 fontStyle = FontStyle.Italic
             };
 
@@ -501,6 +512,12 @@ namespace Omni
                 active = new GUIStyleState { background = buttonPressedBackgroundImage, scaledBackgrounds = new[] { buttonPressedBackgroundImage } },
                 hover = new GUIStyleState { background = buttonHoveredBackgroundImage, scaledBackgrounds = new[] { buttonHoveredBackgroundImage } }
             };
+
+            public static readonly GUIStyle toolbar = new GUIStyle("Toolbar")
+            {
+                name = "omni-tool-bar"
+            };
+                
 
             public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField)
             {
@@ -550,6 +567,7 @@ namespace Omni
         [UsedImplicitly]
         internal void OnEnable()
         {
+            m_OmniSearchBoxFocus = true;
             lastFocusedWindow = s_FocusedWindow;
             titleContent.text = "Search Anything!";
             titleContent.image = EditorGUIUtility.IconContent("winbtn_mac_max").image;
@@ -560,12 +578,53 @@ namespace Omni
         {
             var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
 
+            HandleKeyboardNavigation();
+
             DrawToolbar(context);
             DrawItems(context);
+
+            UpdateFocusControlState();
+        }
+
+        private void UpdateFocusControlState()
+        {
+            if (m_OmniSearchBoxFocus)
+            {
+                m_OmniSearchBoxFocus = false;
+                GUI.FocusControl("OmniSearchBox");
+            }
+            else if (m_FocusSelectedItem)
+            {
+                GUI.FocusControl("Item" + m_SelectedIndex);
+                m_FocusSelectedItem = false;
+            }
+        }
+
+        private void HandleKeyboardNavigation()
+        {
+            var evt = Event.current;
+            if (evt.type == EventType.KeyDown)
+            {
+                var prev = m_SelectedIndex;
+                if (evt.keyCode == KeyCode.DownArrow)
+                    m_SelectedIndex = Math.Min(m_SelectedIndex + 1, m_FilteredItems.Count() - 1);
+                else if (evt.keyCode == KeyCode.UpArrow)
+                    m_SelectedIndex = Math.Max(0, m_SelectedIndex - 1);
+                else
+                    GUI.FocusControl("OmniSearchBox");
+
+                if (prev != m_SelectedIndex)
+                {
+                    m_FocusSelectedItem = true;
+                    Event.current.Use();
+                }
+            }
         }
 
         private void DrawItems(OmniContext context)
         {
+            m_ScrollViewOffset = GUILayoutUtility.GetLastRect();
+
             // TODO: virtual scroll -> either use GUI.Space or set the height of the scroll area
             m_ScrollPosition = GUILayout.BeginScrollView(m_ScrollPosition);
 
@@ -577,28 +636,28 @@ namespace Omni
 
         private void DrawToolbar(OmniContext context)
         {
-            GUILayout.BeginHorizontal(GUI.skin.FindStyle("Toolbar"));
-            EditorGUI.BeginChangeCheck();
-            m_SearchText = EditorGUILayout.TextField(m_SearchText, Styles.searchField);
-            if (GUILayout.Button("", Styles.searchFieldClear))
+            GUILayout.BeginHorizontal(Styles.toolbar);
             {
-                // Remove focus if cleared
-                m_SearchText = "";
-                GUI.FocusControl(null);
-            }
-            if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
-            {
-                m_FilteredItems = OmniService.GetItems(context).ToList();
-                /*
-                if (string.IsNullOrEmpty(m_SearchText))
+                EditorGUI.BeginChangeCheck();
+                GUI.SetNextControlName("OmniSearchBox");
+                context.searchText = m_SearchText = EditorGUILayout.TextField(m_SearchText, Styles.searchField);
+                if (GUILayout.Button("", Styles.searchFieldClear))
+                    context.searchText = m_SearchText = "";
+                
+                if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
                 {
-                    m_FilteredItems = new Item[0];
+                	m_FilteredItems = OmniService.GetItems(context).ToList();
+                    /*
+                    if (string.IsNullOrEmpty(m_SearchText))
+                    {
+                        m_FilteredItems = new Item[0];
+                    }
+                    else
+                    {
+                        m_FilteredItems = OmniService.GetItems(context);
+                    }
+                    */
                 }
-                else
-                {
-                    m_FilteredItems = OmniService.GetItems(context);
-                }
-                */
             }
 
             Rect r = GUILayoutUtility.GetRect(Styles.filterButtonContent, Styles.filterButton);
@@ -619,9 +678,40 @@ namespace Omni
             // TODO: virtual scroll according to scroll pos
             // TODO: precompute rects
 
-            GUILayout.BeginHorizontal(index % 2 == 0 ? Styles.itemBackground1 : Styles.itemBackground2);
+            var bgStyle = index % 2 == 0 ? Styles.itemBackground1 : Styles.itemBackground2;
+            if (m_SelectedIndex == index)
+                bgStyle = Styles.selectedItemBackground;
+
+            GUILayout.BeginHorizontal(bgStyle);
             {
                 GUILayout.Label(item.provider.generatePreview(item, context), Styles.preview);
+
+                if (m_SelectedIndex == index)
+                {
+                    var rect = GUILayoutUtility.GetLastRect();
+                    if (rect.height > 1)
+                    {
+                        if (Event.current.type == EventType.Repaint)
+                        {
+                            Rect visibleRect = position;
+                            visibleRect.x = m_ScrollPosition.x;
+                            visibleRect.y = m_ScrollPosition.y - m_ScrollViewOffset.yMax + 1;
+                            var topLeft = new Vector2(rect.x, rect.y);
+                            var bottomRight = new Vector2(rect.xMax, rect.yMax);
+
+                            if (topLeft.y < visibleRect.yMin)
+                            {
+                                m_ScrollPosition.y = topLeft.y - 2;
+                                Repaint();
+                            }
+                            else if (bottomRight.y > visibleRect.yMax)
+                            {
+                                m_ScrollPosition.y += (bottomRight.y - visibleRect.yMax) + 2;
+                                Repaint();
+                            }
+                        }
+                    }
+                }
 
                 GUILayout.BeginVertical();
                 {
@@ -634,6 +724,7 @@ namespace Omni
                 GUILayout.FlexibleSpace();
 
                 // TODO: keep current item, draw actions for hovered item and selected item
+                GUI.SetNextControlName("Item" + index);
                 foreach (var action in item.provider.actions)
                 {
                     if (GUILayout.Button(action.content, Styles.actionButton))
