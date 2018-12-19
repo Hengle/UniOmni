@@ -593,11 +593,6 @@ namespace Omni
                 m_OmniSearchBoxFocus = false;
                 GUI.FocusControl("OmniSearchBox");
             }
-            else if (m_FocusSelectedItem)
-            {
-                GUI.FocusControl("Item" + m_SelectedIndex);
-                m_FocusSelectedItem = false;
-            }
         }
 
         private void HandleKeyboardNavigation()
@@ -691,7 +686,7 @@ namespace Omni
                     var rect = GUILayoutUtility.GetLastRect();
                     if (rect.height > 1)
                     {
-                        if (Event.current.type == EventType.Repaint)
+                        if (Event.current.type == EventType.Repaint && m_FocusSelectedItem)
                         {
                             Rect visibleRect = position;
                             visibleRect.x = m_ScrollPosition.x;
@@ -709,6 +704,9 @@ namespace Omni
                                 m_ScrollPosition.y += (bottomRight.y - visibleRect.yMax) + 2;
                                 Repaint();
                             }
+
+                            GUI.FocusControl("Item" + m_SelectedIndex);
+                            m_FocusSelectedItem = false;
                         }
                     }
                 }
