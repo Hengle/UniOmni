@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
@@ -41,7 +42,6 @@ namespace Omni
         public string id;
         public string label;
         public string description;
-        public int instanceID;
         public OmniProvider provider;
     }
 
@@ -93,9 +93,12 @@ namespace Omni
 
         public static void FetchProviders()
         {
-            s_Providers = GetAllMethodsWithAttribute(typeof(OmniItemProviderAttribute)).Select(methodInfo => methodInfo.Invoke(null, null) as Omni.OmniProvider).Where(provider => provider != null).ToList();
+            s_Providers = GetAllMethodsWithAttribute<OmniItemProviderAttribute>()
+                          .Select(methodInfo => methodInfo.Invoke(null, null) as OmniProvider)
+                          .Where(provider => provider != null).ToList();
 
-            foreach (var action in GetAllMethodsWithAttribute(typeof(OmniActionsProviderAttribute)).SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
+            foreach (var action in GetAllMethodsWithAttribute<OmniActionsProviderAttribute>()
+                                   .SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
             {
                 var provider = s_Providers.Find(p => p.type == action.type);
                 provider?.actions.Add(action);
@@ -111,13 +114,13 @@ namespace Omni
             }));
         }
 
-        private static IEnumerable<MethodInfo> GetAllMethodsWithAttribute(System.Type attrType, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        private static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
         {
             Assembly assembly = typeof(Selection).Assembly;
             var managerType = assembly.GetTypes().First(t => t.Name == "EditorAssemblies");
             var method = managerType.GetMethod("Internal_GetAllMethodsWithAttribute", BindingFlags.NonPublic | BindingFlags.Static);
-            var arguments = new object[] { attrType, bindingFlags };
-            return (method.Invoke(null, arguments) as object[]).Cast<MethodInfo>();
+            var arguments = new object[] { typeof(T), bindingFlags };
+            return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
         }
     }
 
@@ -125,21 +128,16 @@ namespace Omni
     {
         static EditorWindow s_FocusedWindow;
 
-        [SerializeField]
-        EditorWindow m_FocusedWindow;
+        [SerializeField] private string m_SearchText;
+        [SerializeField] private Vector2 m_ScrollPosition;
+        [SerializeField] private EditorWindow m_FocusedWindow;
 
-        [SerializeField]
-        string m_SearchText;
+        private IEnumerable<OmniItem> m_FilteredItems;
 
-        [SerializeField]
-        Vector2 m_Scroll;
-
-        IEnumerable<OmniItem> m_FilteredItems;
-
-        // public override void OnGUI(Rect rect)
-        public void OnGUI()
+        [UsedImplicitly]
+        internal void OnGUI()
         {
-            var context = new OmniContext() { searchText = m_SearchText, focusedWindow = m_FocusedWindow };
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = m_FocusedWindow };
             EditorGUI.BeginChangeCheck();
             m_SearchText = EditorGUILayout.TextField(m_SearchText);
             if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
@@ -158,9 +156,9 @@ namespace Omni
             }
 
             // TODO: virtual scroll -> either use GUI.Space or set the height of the scroll area
-            m_Scroll = GUILayout.BeginScrollView(m_Scroll);
+            m_ScrollPosition = GUILayout.BeginScrollView(m_ScrollPosition);
 
-            foreach (var item in m_FilteredItems.Take(10))
+            foreach (var item in m_FilteredItems.Take(10000))
             {
                 // TODO: virtual scroll according to scroll pos
                 // TODO: precompute rects
@@ -194,57 +192,29 @@ namespace Omni
             GUILayout.EndScrollView();
         }
 
-        public void OnEnable()
+        [UsedImplicitly]
+        internal void OnEnable()
         {
             m_FocusedWindow = s_FocusedWindow;
         }
 
-        /*
-        public override Vector2 GetWindowSize()
-        {
-            // TODO: persist size and modify size according to if the list is popped or not
-            return new Vector2(750, 600f);
-        }
-
-        public override void OnOpen()
-        {
-            OnEnable();
-        }
-
-        public override void OnClose()
-        {
-        }
-        */
-
-        [Shortcut("Window/Omni Tool", KeyCode.O, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [UsedImplicitly, Shortcut("Window/Omni Tool", KeyCode.O, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         public static void PopOmniTool()
         {
-            s_FocusedWindow = EditorWindow.focusedWindow;
+            s_FocusedWindow = focusedWindow;
             GetWindow<OmniTool>();
-            EditorWindow.FocusWindowIfItsOpen<OmniTool>();
-
-            /*
-            try
-            {
-                
-                // TODO: center on screen
-                PopupWindow.Show(new Rect(100, 100, 400, 800), new OmniTool());
-            }
-            catch (Exception )
-            {
-                
-            }
-            */
+            FocusWindowIfItsOpen<OmniTool>();
         }
     }
 
 
     namespace Providers
     {
+        [UsedImplicitly]
         static class AssetProvider
         {
-            [OmniItemProvider]
-            static OmniProvider CreateProvider()
+            [UsedImplicitly, OmniItemProvider]
+            internal static OmniProvider CreateProvider()
             {
                 return new OmniProvider("asset")
                 {
@@ -253,7 +223,7 @@ namespace Omni
                         return AssetDatabase.FindAssets(context.searchText).Select(guid =>
                         {
                             var path = AssetDatabase.GUIDToAssetPath(guid);
-                            return new OmniItem()
+                            return new OmniItem
                             {
                                 id = path,
                                 label = Path.GetFileName(path),
@@ -272,8 +242,8 @@ namespace Omni
                 };
             }
 
-            [OmniActionsProvider]
-            static IEnumerable<OmniAction> ActionHandlers()
+            [UsedImplicitly, OmniActionsProvider]
+            internal static IEnumerable<OmniAction> ActionHandlers()
             {
                 // Select
                 // Open
@@ -302,10 +272,11 @@ namespace Omni
             }
         }
 
+        [UsedImplicitly]
         static class MenuProvider
         {
-            [OmniItemProvider]
-            static Omni.OmniProvider CreateProvider()
+            [UsedImplicitly, OmniItemProvider]
+            internal static OmniProvider CreateProvider()
             {
                 return new OmniProvider("menu")
                 {
@@ -315,7 +286,7 @@ namespace Omni
                         var shortcuts = new List<string>();
                         GetMenuInfo(itemNames, shortcuts);
 
-                        return itemNames.Select(menuName => new OmniItem()
+                        return itemNames.Select(menuName => new OmniItem
                         {
                             id = menuName,
                             description = menuName,
@@ -325,8 +296,8 @@ namespace Omni
                 };
             }
 
-            [OmniActionsProvider]
-            static IEnumerable<OmniAction> ActionHandlers()
+            [UsedImplicitly, OmniActionsProvider]
+            internal static IEnumerable<OmniAction> ActionHandlers()
             {
                 // Select
                 // Open
