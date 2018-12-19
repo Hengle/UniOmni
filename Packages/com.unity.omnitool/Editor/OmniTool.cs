@@ -408,7 +408,6 @@ namespace Omni
                             bool isFile = File.Exists(path);
                             if (isFile)
                                 fileSize = Math.Max(1024, new FileInfo(path).Length);
-                            //var fileSize = fileInfo.
                             return new OmniItem
                             {
                                 id = path,
