@@ -3,9 +3,19 @@
 /[Oo]bj/
 /[Bb]uild/
 /[Bb]uilds/
+/[Ll]ogs/
+/_ReSharper.Caches/
+
+# Private assets
 /Assets/AssetStoreTools*
 /Assets/ReUniter
 /Assets/Plugins
+Assets/ReUniter.meta
+Assets/Prefabs/Cube.prefab
+Assets/.reuniter_data
+Assets/Prefabs/Cube.prefab.meta
+Assets/Plugins.meta
+Assets/Prefabs.meta
 
 # Visual Studio 2015 cache directory
 /.vs/
@@ -34,9 +44,3 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
-Assets/ReUniter.meta
-Assets/Prefabs/Cube.prefab
-Assets/.reuniter_data
-Assets/Prefabs/Cube.prefab.meta
-Assets/Plugins.meta
-Assets/Prefabs.meta
