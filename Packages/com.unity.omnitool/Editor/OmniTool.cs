@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using JetBrains.Annotations;
+using Omni.Providers;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
@@ -32,7 +33,6 @@ namespace Omni
 
         public string type;
         public GUIContent content;
-
         public ActionHandler handler;
         public EnabledHandler isEnabled;
     }
@@ -45,6 +45,21 @@ namespace Omni
         public OmniProvider provider;
     }
 
+    public class OmniFilter
+    {
+        public OmniFilter()
+        {
+            filteredProviderIds = new List<string>();
+            filteredProviders = new List<OmniProvider>();
+            providerFilters = new List<HashSet<string>>();
+        }
+
+        [SerializeField]
+        public List<string> filteredProviderIds;
+        public List<OmniProvider> filteredProviders;
+        public List<HashSet<string>> providerFilters;
+    }
+
     public class OmniProvider
     {
         public OmniProvider(string type)
@@ -53,6 +68,48 @@ namespace Omni
             actions = new List<OmniAction>();
             fetchItems = (context) => new OmniItem[0];
             generatePreview = (item, context) => null;
+        }
+
+        public static bool MatchSearchGroups(string searchContext, string content)
+        {
+            int dummyStart;
+            int dummyEnd;
+            return MatchSearchGroups(searchContext, content, out dummyStart, out dummyEnd);
+        }
+
+        public static bool MatchSearchGroups(string searchContext, string content, out int startIndex, out int endIndex)
+        {
+            startIndex = endIndex = -1;
+            if (content == null)
+                return false;
+
+            if (string.IsNullOrEmpty(searchContext) || searchContext == content)
+            {
+                startIndex = 0;
+                endIndex = content.Length - 1;
+                return true;
+            }
+
+            // Each search group is space separated
+            // Search group must match in order and be complete.
+            var searchGroups = searchContext.Split(' ');
+            var startSearchIndex = 0;
+            foreach (var searchGroup in searchGroups)
+            {
+                if (searchGroup.Length == 0)
+                    continue;
+
+                startSearchIndex = content.IndexOf(searchGroup, startSearchIndex, StringComparison.CurrentCultureIgnoreCase);
+                if (startSearchIndex == -1)
+                {
+                    return false;
+                }
+
+                startIndex = startIndex == -1 ? startSearchIndex : startIndex;
+                startSearchIndex = endIndex = startSearchIndex + searchGroup.Length - 1;
+            }
+
+            return startIndex != -1 && endIndex != -1;
         }
 
         public String type;
@@ -65,6 +122,7 @@ namespace Omni
     {
         public string searchText;
         public EditorWindow focusedWindow;
+        public HashSet<string> currentProviderFilters;
     }
 
     public class OmniItemProviderAttribute : Attribute
@@ -77,41 +135,95 @@ namespace Omni
 
     public static class OmniService
     {
-        static List<OmniProvider> s_Providers;
-        public static List<OmniProvider> Providers
-        {
-            get
-            {
-                if (s_Providers == null)
-                {
-                    FetchProviders();
-                }
+        const string k_KFilterPrefKey = "omnitool.filters";
+        public static List<OmniProvider> Providers { get; private set; }
 
-                return s_Providers;
+        static OmniService()
+        {
+            Filter = new OmniFilter();
+            FetchProviders();
+            var filterStr = EditorPrefs.GetString(k_KFilterPrefKey, "all");
+            if (filterStr == "all")
+            {
+                ResetFilter();
+            }
+            else
+            {
+                var filters = filterStr.Split(',');
+                SetFilteredProviders(filters);
             }
         }
 
-        public static void FetchProviders()
-        {
-            s_Providers = GetAllMethodsWithAttribute<OmniItemProviderAttribute>()
-                          .Select(methodInfo => methodInfo.Invoke(null, null) as OmniProvider)
-                          .Where(provider => provider != null).ToList();
-
-            foreach (var action in GetAllMethodsWithAttribute<OmniActionsProviderAttribute>()
-                                   .SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
-            {
-                var provider = s_Providers.Find(p => p.type == action.type);
-                provider?.actions.Add(action);
-            }
-        }
-
+        public static OmniFilter Filter { get; private set; }
+        
         public static IEnumerable<OmniItem> GetItems(OmniContext context)
         {
-            return Providers.SelectMany(provider => provider.fetchItems(context).Select(item =>
+            return Filter.filteredProviders.SelectMany(provider =>
             {
-                item.provider = provider;
-                return item;
-            }));
+                context.currentProviderFilters = Filter.providerFilters[Filter.filteredProviders.FindIndex(p => p == provider)];
+                return provider.fetchItems(context).Select(item =>
+                {
+                    item.provider = provider;
+                    return item;
+                });
+            });
+        }
+
+        public static void ResetFilter(bool selectAll = true)
+        {
+            if (selectAll)
+            {
+                Filter.filteredProviderIds = new List<string>(Providers.Select(p => p.type));
+                Filter.filteredProviders = new List<OmniProvider>(Providers);
+            }
+            else
+            {
+                Filter.filteredProviderIds = new List<string>();
+                Filter.filteredProviders = new List<OmniProvider>();
+            }
+            SaveFilters();
+        }
+
+        public static void SetFilteredProviders(IEnumerable<string> providerIds)
+        {
+            Filter.filteredProviderIds = new List<string>(providerIds);
+            Filter.filteredProviders = Providers.Where(p => providerIds.Contains(p.type)).ToList();
+            // TODO populate
+            Filter.providerFilters = Filter.filteredProviders.Select(dummy => new HashSet<string>()).ToList();
+            SaveFilters();
+        }
+
+        public static void UpdateFilter(string filterPath, bool isEnabled)
+        {
+            // TODO handle subfilter
+            if (isEnabled)
+            {
+                Filter.filteredProviderIds.Add(filterPath);
+            }
+            else
+            {
+                Filter.filteredProviderIds.Remove(filterPath);
+            }
+
+            Filter.filteredProviders = Providers.Where(p => Filter.filteredProviderIds.Contains(p.type)).ToList();
+            // TODO populate
+            Filter.providerFilters = Filter.filteredProviders.Select(dummy => new HashSet<string>()).ToList();
+            SaveFilters();
+        }
+
+        private static void FetchProviders()
+        {
+            Providers = GetAllMethodsWithAttribute<OmniItemProviderAttribute>()
+                .Select(methodInfo => methodInfo.Invoke(null, null) as OmniProvider)
+                .Where(provider => provider != null).ToList();
+
+            foreach (var action in GetAllMethodsWithAttribute<OmniActionsProviderAttribute>()
+                .SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<OmniAction>())
+            {
+                var provider = Providers.Find(p => p.type == action.type);
+                provider?.actions.Add(action);
+            }
+
         }
 
         private static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
@@ -121,6 +233,12 @@ namespace Omni
             var method = managerType.GetMethod("Internal_GetAllMethodsWithAttribute", BindingFlags.NonPublic | BindingFlags.Static);
             var arguments = new object[] { typeof(T), bindingFlags };
             return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
+        }
+
+        private static void SaveFilters()
+        {
+            var filterStr = string.Join(",", Filter.filteredProviderIds);
+            EditorPrefs.SetString(k_KFilterPrefKey, filterStr);
         }
     }
 
@@ -169,12 +287,11 @@ namespace Omni
 
     public class OmniTool : EditorWindow
     {
-        static EditorWindow s_FocusedWindow;
+        public static EditorWindow s_FocusedWindow;
 
         [SerializeField] private string m_SearchText;
         [SerializeField] private Vector2 m_ScrollPosition;
-        [SerializeField] private EditorWindow m_FocusedWindow;
-
+		[SerializeField] public EditorWindow lastFocusedWindow;
         private IEnumerable<OmniItem> m_FilteredItems;
 
         static class Styles
@@ -182,7 +299,7 @@ namespace Omni
             static Styles()
             {
             }
-
+        
             private const int itemRowPadding = 4;
             private const float actionButtonSize = 24f;
             private const float itemPreviewSize = 32f;
@@ -291,7 +408,7 @@ namespace Omni
         [UsedImplicitly]
         internal void OnEnable()
         {
-            m_FocusedWindow = s_FocusedWindow;
+            lastFocusedWindow = s_FocusedWindow;
             titleContent.text = "Search Anything!";
             titleContent.image = EditorGUIUtility.IconContent("winbtn_mac_max").image;
         }
@@ -299,7 +416,7 @@ namespace Omni
         [UsedImplicitly]
         internal void OnGUI()
         {
-            var context = new OmniContext { searchText = m_SearchText, focusedWindow = m_FocusedWindow };
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
 
             DrawToolbar(context);
             DrawItems(context);
@@ -329,7 +446,7 @@ namespace Omni
             }
             if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
             {
-                m_FilteredItems = OmniService.GetItems(context);
+                m_FilteredItems = OmniService.GetItems(context).ToList();
                 /*
                 if (string.IsNullOrEmpty(m_SearchText))
                 {
@@ -377,9 +494,18 @@ namespace Omni
         }
 
         [UsedImplicitly, Shortcut("Window/Omni Tool", KeyCode.O, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-        public static void PopOmniTool()
+        public static void PopOmniToolAll()
         {
-            s_FocusedWindow = focusedWindow;
+            OmniTool.s_FocusedWindow = focusedWindow;
+            GetWindow<OmniTool>();
+            FocusWindowIfItsOpen<OmniTool>();
+        }
+
+        [UsedImplicitly, Shortcut("Window/Omni Tool (Menu)", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        public static void PopOmniToolMenu()
+        {
+            OmniTool.s_FocusedWindow = focusedWindow;
+            OmniService.SetFilteredProviders(new [] { MenuProvider.type });
             GetWindow<OmniTool>();
             FocusWindowIfItsOpen<OmniTool>();
         }
@@ -390,10 +516,38 @@ namespace Omni
         [UsedImplicitly]
         static class AssetProvider
         {
+            internal static string type = "asset";
+            /* Filters:
+                 t:<type>
+                 AnimationClip
+                 AudioClip
+                 AudioMixer
+                 ComputeShader
+                 Font
+                 GUISKin
+                 Material
+                 Mesh
+                 Model
+                 PhysicMaterial
+                 PRefab
+                 Scene
+                 Script
+                 Shader
+                 Sprite
+                 Texture
+                 VideoClip
+
+                l:<label>
+                ref[:id]:path
+                v:<versionState>
+                s:<softLockState>
+                a:<area> [assets, packages]
+             */
+
             [UsedImplicitly, OmniItemProvider]
             internal static OmniProvider CreateProvider()
             {
-                return new OmniProvider("asset")
+                return new OmniProvider(type)
                 {
                     fetchItems = (context) =>
                     {
@@ -456,10 +610,11 @@ namespace Omni
         [UsedImplicitly]
         static class MenuProvider
         {
+            internal static string type = "menu";
             [UsedImplicitly, OmniItemProvider]
             internal static OmniProvider CreateProvider()
             {
-                return new OmniProvider("menu")
+                return new OmniProvider(type)
                 {
                     fetchItems = (context) =>
                     {
@@ -467,7 +622,7 @@ namespace Omni
                         var shortcuts = new List<string>();
                         GetMenuInfo(itemNames, shortcuts);
 
-                        return itemNames.Select(menuName => new OmniItem
+                        return itemNames.Where(menuName => OmniProvider.MatchSearchGroups(context.searchText, menuName)).Select(menuName => new OmniItem
                         {
                             id = menuName,
                             description = menuName,
