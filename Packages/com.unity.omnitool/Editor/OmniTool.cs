@@ -529,7 +529,7 @@ namespace Omni
                 name = "omni-tool-search-field-clear"
             };
 
-            public static readonly GUIStyle filterButton = new GUIStyle("ToolBarDropDown")
+            public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.toolbarDropDown)
             {
                 name = "omni-tool-filter-button"
             };
@@ -653,18 +653,16 @@ namespace Omni
                     }
                     */
                 }
-            }
 
-            Rect r = GUILayoutUtility.GetRect(Styles.filterButtonContent, Styles.filterButton);
-            Rect rightRect = new Rect(r.xMin, r.y, r.xMax, r.height);
-            if (EditorGUI.DropdownButton(rightRect, Styles.filterButtonContent, FocusType.Passive, GUIStyle.none))
-            {
-                if (FilterWindow.ShowAtPosition(rightRect, new Vector2(100, 200)))
+                var rightRect = GUILayoutUtility.GetLastRect();
+                if (EditorGUILayout.DropdownButton(Styles.filterButtonContent, FocusType.Passive, Styles.filterButton, GUILayout.MaxWidth(70f)))
                 {
-                    GUIUtility.ExitGUI();
+                    if (FilterWindow.ShowAtPosition(rightRect, new Vector2(100, 200)))
+                    {
+                        GUIUtility.ExitGUI();
+                    }
                 }
             }
-
             GUILayout.EndHorizontal();
         }
 
