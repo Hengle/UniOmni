@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.AccessControl;
+using System.Text;
 using JetBrains.Annotations;
 using Omni.Providers;
 using UnityEditor;
@@ -207,6 +209,7 @@ namespace Omni
             Filter = new OmniFilter();
             FetchProviders();
             var filterStr = EditorPrefs.GetString(k_KFilterPrefKey, null);
+            Debug.Log("Load filters: " + filterStr);
             if (filterStr == null)
             {
                 ResetFilter(true);
@@ -339,10 +342,27 @@ namespace Omni
             UpdateFilteredProviders();
         }
 
+        public static string FilterToString()
+        {
+            var filterStr = new List<string>();
+            foreach (var providerDesc in Filter.model)
+            {
+                if (providerDesc.categories.Count == 0 && providerDesc.entry.isEnabled)
+                    filterStr.Add(providerDesc.entry.name.id);
+                foreach (var cat in providerDesc.categories)
+                {
+                    filterStr.Add(providerDesc.entry.name.id + ":" + cat.name.id);
+                }
+            }
+
+            return string.Join(",", filterStr);
+        }
+
         private static void SaveFilters()
         {
-            // var filterStr = string.Join(",", Filter.filteredProviderIds);
-            // EditorPrefs.SetString(k_KFilterPrefKey, filterStr);
+            var filter = FilterToString();
+            Debug.Log("Save filters: "  + filter);
+            EditorPrefs.SetString(k_KFilterPrefKey, filter);
         }
     }
 
@@ -573,6 +593,8 @@ namespace Omni
             lastFocusedWindow = s_FocusedWindow;
             titleContent.text = "Search Anything!";
             titleContent.image = EditorGUIUtility.IconContent("winbtn_mac_max").image;
+
+            Debug.Log("Service Filter: " + OmniService.FilterToString());
         }
 
         [UsedImplicitly]
