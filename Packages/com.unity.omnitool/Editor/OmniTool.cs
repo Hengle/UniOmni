@@ -455,7 +455,6 @@ namespace Omni
         {
             var screenRect = GUIUtility.GUIToScreenRect(rect);
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
-            // var filterWindow = GetWindow<FilterWindow>();
             filterWindow.omniTool = omniTool;
             filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
             return true;
@@ -464,6 +463,12 @@ namespace Omni
         [UsedImplicitly]
         internal void OnGUI()
         {
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
+            {
+                Close();
+                return;
+            }
+
             GUI.Box(new Rect(0, 0, position.width, position.height), GUIContent.none, Styles.panelBorder);
 
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
@@ -1020,6 +1025,33 @@ namespace Omni
                 a:<area> [assets, packages]
              */
 
+            internal static string[] typeFilter = new[]
+            {
+                "AnimationClip",
+                "AudioClip",
+                "AudioMixer",
+                "ComputeShader",
+                "Font",
+                "GUISKin",
+                "Material",
+                "Mesh",
+                "Model",
+                "PhysicMaterial",
+                "Prefab",
+                "Scene",
+                "Script",
+                "Shader",
+                "Sprite",
+                "Texture",
+                "VideoClip"
+            };
+
+            internal static string[] areaFilter = new[]
+            {
+                "assets",
+                "packages"
+            };
+
             [UsedImplicitly, OmniItemProvider]
             internal static OmniProvider CreateProvider()
             {
@@ -1031,8 +1063,10 @@ namespace Omni
                         if (context.categories.Any(c => !c.isEnabled))
                         {
                             // Not all categories are enabled, so create a proper filter:
-                            filter = string.Join(" ", context.categories.Where(c => c.isEnabled).Select(c => "t:" + c.name.id)) + filter;
+                            filter = string.Join(" ", context.categories.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
                         }
+
+                        Debug.Log("asset filter: " + filter);
 
                         return AssetDatabase.FindAssets(filter).Select(guid =>
                         {
@@ -1079,28 +1113,14 @@ namespace Omni
                     subCategories = new List<OmniName>()
                 };
 
-                foreach (var subCat in new []
+                foreach (var subCat in areaFilter)
                 {
-                    "AnimationClip",
-                    "AudioClip",
-                    "AudioMixer",
-                    "ComputeShader",
-                    "Font",
-                    "GUISKin",
-                    "Material",
-                    "Mesh",
-                    "Model",
-                    "PhysicMaterial",
-                    "Prefab",
-                    "Scene",
-                    "Script",
-                    "Shader",
-                    "Sprite",
-                    "Texture",
-                    "VideoClip"
-                })
+                    provider.subCategories.Add(new OmniName("a:" + subCat, subCat));
+                }
+
+                foreach (var subCat in typeFilter)
                 {
-                    provider.subCategories.Add(new OmniName(subCat));
+                    provider.subCategories.Add(new OmniName("t:" + subCat, subCat));
                 }
 
                 return provider;
