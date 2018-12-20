@@ -1227,5 +1227,55 @@ namespace Omni
                 method.Invoke(null, arguments);
             }
         }
+
+        [UsedImplicitly]
+        static class Settings
+        {
+            internal static string type = "settings";
+            internal static string displayName = "Settings";
+            [UsedImplicitly, OmniItemProvider]
+            internal static OmniProvider CreateProvider()
+            {
+                return new OmniProvider(type, displayName)
+                {
+                    fetchItems = (context) =>
+                    {
+                        var providers = FetchSettingsProviders();
+                        return providers.Select(settings => new OmniItem
+                        {
+                            id = settings.settingsPath,
+                            description = settings.settingsPath,
+                            label = Path.GetFileName(settings.settingsPath)
+                        });
+                    },
+
+                    fetchThumbnail = (item, context) => OmniIcon.shortcut
+                };
+            }
+
+            [UsedImplicitly, OmniActionsProvider]
+            internal static IEnumerable<OmniAction> ActionHandlers()
+            {
+                return new[]
+                {
+                    new OmniAction(type, "exec", OmniIcon.execute, "Execute shortcut...") { handler = (item, context) =>
+                    {
+                        if (item.id.StartsWith("Project/"))
+                            SettingsService.OpenProjectSettings(item.id);
+                        else
+                            SettingsService.OpenUserPreferences(item.id);
+                    }}
+                };
+            }
+
+            private static SettingsProvider[] FetchSettingsProviders()
+            {
+                Assembly assembly = typeof(SettingsService).Assembly;
+                var managerType = assembly.GetTypes().First(t => t.Name == "SettingsService");
+                var method = managerType.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
+                var arguments = new object[] {};
+                return method.Invoke(null, arguments) as SettingsProvider[];
+            }
+        }
     }
 }
