@@ -40,7 +40,7 @@ namespace Omni
             m_Disposed = true;
             m_Timer.Stop();
             TimeSpan timespan = m_Timer.Elapsed;
-            Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
+            //Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
         }
     }
 
@@ -821,6 +821,7 @@ namespace Omni
                 m_OmniSearchBoxFocus = true;
         }
 
+        private double clickTime = 0;
         private void DrawItems(OmniContext context)
         {
             UpdateScrollAreaOffset();
@@ -848,6 +849,22 @@ namespace Omni
                     var bottomSpaceSkipped = (itemCount - rowIndex) * Styles.itemRowHeight;
                     if (bottomSpaceSkipped > 0)
                         GUILayout.Space(bottomSpaceSkipped);
+
+                    if (Event.current.type == EventType.MouseDown)
+                    {
+                        var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                        if (clickedItemIndex >= 0 && clickedItemIndex < itemCount)
+                        {
+                            m_SelectedIndex = clickedItemIndex;
+                            if ((EditorApplication.timeSinceStartup - clickTime) < 0.2)
+                            {
+                                var item = m_FilteredItems.ElementAt(m_SelectedIndex);
+                                item.provider.actions[0].handler(item, context);
+                            }
+                            Event.current.Use();
+                        }
+                        clickTime = EditorApplication.timeSinceStartup;
+                    }
                 }
                 else
                 {
@@ -1062,7 +1079,7 @@ namespace Omni
                         var areas = context.categories.GetRange(0, areaFilter.Length);
 
                         if (areas.All(c => !c.isEnabled))
-                            return new OmniItem[0];
+                            return;
 
                         if (areas.Any(c => !c.isEnabled))
                         {
@@ -1072,15 +1089,13 @@ namespace Omni
 
                         var types = context.categories.GetRange(areaFilter.Length, context.categories.Count - areaFilter.Length);
                         if (types.All(c => !c.isEnabled))
-                            return new OmniItem[0];
+                            return;
 
                         if (types.Any(c => !c.isEnabled))
                         {
                             // Not all categories are enabled, so create a proper filter:
                             filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
                         }
-
-                        Debug.Log("asset filter: " + filter);
 
                         items.AddRange(AssetDatabase.FindAssets(filter).Select(guid => 
                         {
@@ -1239,15 +1254,16 @@ namespace Omni
             {
                 return new OmniProvider(type, displayName)
                 {
-                    fetchItems = (context) =>
+                    fetchItems = (context, items, provider) =>
                     {
                         var providers = FetchSettingsProviders();
-                        return providers.Select(settings => new OmniItem
+                        items.AddRange(providers.Select(settings => new OmniItem
                         {
                             id = settings.settingsPath,
                             description = settings.settingsPath,
-                            label = Path.GetFileName(settings.settingsPath)
-                        });
+                            label = Path.GetFileName(settings.settingsPath),
+                            provider = provider
+                        }));
                     },
 
                     fetchThumbnail = (item, context) => OmniIcon.shortcut
