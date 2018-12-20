@@ -70,6 +70,7 @@ namespace Omni
         public string id;
         public string label;
         public string description;
+        public Texture2D thumbnail;
         public OmniProvider provider;
     }
 
@@ -159,7 +160,7 @@ namespace Omni
             name = new OmniName(id, displayName);
             actions = new List<OmniAction>();
             fetchItems = (context) => new OmniItem[0];
-            generatePreview = (item, context) => null;
+            fetchThumbnail = (item, context) => item.thumbnail ?? OmniIcon.omnitool;
             fetchDescription = (item, context) => item.description ?? String.Empty;
             subCategories = new List<OmniName>();
         }
@@ -206,7 +207,7 @@ namespace Omni
 
         public OmniName name;
         public DescriptionHandler fetchDescription;
-        public PreviewHandler generatePreview;
+        public PreviewHandler fetchThumbnail;
         public GetItemsHandler fetchItems;
         public List<OmniAction> actions;
         public List<OmniName> subCategories;
@@ -217,6 +218,7 @@ namespace Omni
         public string searchText;
         public EditorWindow focusedWindow;
         public List<OmniFilter.Entry> categories;
+        public int totalItemCount;
     }
 
     public class OmniItemProviderAttribute : Attribute
@@ -668,6 +670,15 @@ namespace Omni
                 padding = paddingNone
             };
 
+            public static readonly GUIStyle noResult = new GUIStyle(EditorStyles.helpBox)
+            {
+                name = "omni-tool-no-result",
+                fontSize = 20,
+                alignment = TextAnchor.MiddleCenter,
+                margin = marginNone,
+                padding = paddingNone
+            };
+
             public static readonly GUIStyle itemDescription = new GUIStyle(EditorStyles.label)
             {
                 name = "omni-tool-item-description",
@@ -733,7 +744,7 @@ namespace Omni
         [UsedImplicitly]
         internal void OnGUI()
         {
-            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
 
             HandleKeyboardNavigation();
 
@@ -745,7 +756,7 @@ namespace Omni
 
         public void Refresh()
         {
-			var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
+			var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
             m_FilteredItems = OmniService.GetItems(context).ToList();
             m_SelectedIndex = -1;
             titleContent.text = $"Filtered {m_FilteredItems.Count} Anything!";
@@ -791,6 +802,8 @@ namespace Omni
         {
             UpdateScrollAreaOffset();
 
+            context.totalItemCount = m_FilteredItems.Count;
+
             m_ScrollPosition = GUILayout.BeginScrollView(m_ScrollPosition);
             {
                 var itemCount = m_FilteredItems.Count;
@@ -798,17 +811,26 @@ namespace Omni
                 var itemSkipCount = Math.Max(0, (int)(m_ScrollPosition.y / Styles.itemRowHeight));
                 var itemDisplayCount = Math.Max(0, Math.Min(itemCount, (int)(availableHeight / Styles.itemRowHeight) + 2));
                 var topSpaceSkipped = itemSkipCount * Styles.itemRowHeight;
-
-                //if (topSpaceSkipped > 0)
-                    GUILayout.Space(topSpaceSkipped);
-
+                
                 int rowIndex = itemSkipCount;
-                foreach (var item in m_FilteredItems.GetRange(itemSkipCount, Math.Min(itemDisplayCount, itemCount - itemSkipCount)))
-                    DrawItem(item, context, rowIndex++);
+                var limitCount = Math.Max(0, Math.Min(itemDisplayCount, itemCount - itemSkipCount));
+                if (limitCount > 0)
+                {
+                    if (topSpaceSkipped > 0)
+                        GUILayout.Space(topSpaceSkipped);
 
-                var bottomSpaceSkipped = (itemCount - rowIndex) * Styles.itemRowHeight;
-                //if (bottomSpaceSkipped > 0)
-                    GUILayout.Space(bottomSpaceSkipped);
+                    //Debug.Log($"{itemSkipCount} - {itemDisplayCount} - {itemCount} - {itemCount - itemSkipCount} - {limitCount}");
+                    foreach (var item in m_FilteredItems.GetRange(itemSkipCount, limitCount))
+                        DrawItem(item, context, rowIndex++);
+
+                    var bottomSpaceSkipped = (itemCount - rowIndex) * Styles.itemRowHeight;
+                    if (bottomSpaceSkipped > 0)
+                        GUILayout.Space(bottomSpaceSkipped);
+                }
+                else
+                {
+                    GUILayout.Box("No Result", Styles.noResult, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+                }
 
                 // Fix selected index display if out of virtual scrolling area
                 if (Event.current.type == EventType.Repaint && m_FocusSelectedItem && m_SelectedIndex >= 0)
@@ -919,7 +941,7 @@ namespace Omni
 
             GUILayout.BeginHorizontal(bgStyle);
             {
-                GUILayout.Label(item.provider.generatePreview(item, context), Styles.preview);
+                GUILayout.Label(item.thumbnail ?? item.provider.fetchThumbnail(item, context), Styles.preview);
 
                 GUILayout.BeginVertical();
                 {
@@ -1015,12 +1037,23 @@ namespace Omni
                         return item.description;
                     },
 
-                    generatePreview = (item, context) =>
+                    fetchThumbnail = (item, context) =>
                     {
-                        var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
-                        if (obj != null)
-                            return AssetPreview.GetMiniThumbnail(obj);
-                        return null;
+                        if (item.thumbnail)
+                            return item.thumbnail;
+
+//                         if (context.totalItemCount < 100)
+//                         {
+//                             var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+//                             if (obj != null)
+//                                 item.thumbnail = AssetPreview.GetAssetPreview(obj);
+//                         }
+                        //if (item.thumbnail == null)
+                          //  item.thumbnail = AssetDatabase.GetCachedIcon(item.id) as Texture2D;
+                        if (item.thumbnail == null)
+                            item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(item.id);
+
+                        return item.thumbnail;
                     },
 
                     subCategories = new List<OmniName>()
@@ -1110,7 +1143,7 @@ namespace Omni
                         });
                     },
 
-                    generatePreview = (item, context) => OmniIcon.shortcut
+                    fetchThumbnail = (item, context) => OmniIcon.shortcut
                 };
             }
 
