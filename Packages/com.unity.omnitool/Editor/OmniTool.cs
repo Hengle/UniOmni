@@ -66,9 +66,11 @@ namespace Omni
             {
                 this.entry = new Entry(name);
                 categories = new List<Entry>();
+                isExpanded = false;
             }
 
             public Entry entry;
+            public bool isExpanded;
             public List<Entry> categories;
         }
 
@@ -98,15 +100,15 @@ namespace Omni
             return false;
         }
 
-        public HashSet<string> GetEnabledSubCategories(OmniProvider provider)
+        public List<Entry> GetSubCategories(OmniProvider provider)
         {
             var desc = model.Find(pd => pd.entry.name.id == provider.name.id);
             if (desc == null)
             {
-                return new HashSet<string>();
+                return null;
             }
 
-            return new HashSet<string>(desc.categories.Where(c => c.isEnabled).Select(c => c.name.id));
+            return desc.categories;
         }
 
         public List<OmniProvider> filteredProviders;
@@ -188,7 +190,7 @@ namespace Omni
     {
         public string searchText;
         public EditorWindow focusedWindow;
-        public HashSet<string> currentProviderFilters;
+        public List<OmniFilter.Entry> categories;
     }
 
     public class OmniItemProviderAttribute : Attribute
@@ -202,22 +204,14 @@ namespace Omni
     public static class OmniService
     {
         const string k_KFilterPrefKey = "omnitool.filters";
+        const string k_KFilterExpandedPrefKey = "omnitool.filters_expanded";
         public static List<OmniProvider> Providers { get; private set; }
 
         static OmniService()
         {
             Filter = new OmniFilter();
             FetchProviders();
-            var filterStr = EditorPrefs.GetString(k_KFilterPrefKey, null);
-            Debug.Log("Load filters: " + filterStr);
-            if (filterStr == null)
-            {
-                ResetFilter(true);
-            }
-            else
-            {
-                SetFilters(filterStr);
-            }
+            LoadFilters();
         }
 
         public static OmniFilter Filter { get; private set; }
@@ -226,7 +220,7 @@ namespace Omni
         {
             return Filter.filteredProviders.SelectMany(provider =>
             {
-                context.currentProviderFilters = Filter.GetEnabledSubCategories(provider);
+                context.categories = Filter.GetSubCategories(provider);
                 return provider.fetchItems(context).Select(item =>
                 {
                     item.provider = provider;
@@ -241,17 +235,39 @@ namespace Omni
             {
                 SetFilterInternal(enableAll, providerDesc.entry.name.id);
             }
-            UpdateFilteredProviders();
-            SaveFilters();
+            FilterChanged();
         }
 
         public static void SetFilter(bool isEnabled, string providerId, string subCategory = null)
         {
             if (SetFilterInternal(isEnabled, providerId, subCategory))
             {
-                UpdateFilteredProviders();
-                SaveFilters();
+                FilterChanged();
             }
+        }
+
+        public static void SetExpanded(bool isExpanded, string providerId)
+        {
+            var providerDesc = Filter.model.Find(pd => pd.entry.name.id == providerId);
+            if (providerDesc != null)
+            {
+                providerDesc.isExpanded = isExpanded;
+
+                var filtersExpandedStr = string.Join(",", Filter.model.Where(pd => pd.isExpanded).Select(pd => pd.entry.name.id));
+                Debug.Log("Save filter expanded: " + filtersExpandedStr);
+                EditorPrefs.SetString(k_KFilterExpandedPrefKey, filtersExpandedStr);
+            }
+        }
+
+        private static void FilterChanged()
+        {
+            UpdateFilteredProviders();
+            SaveFilters();
+        }
+
+        private static void UpdateFilteredProviders()
+        {
+            Filter.filteredProviders = Providers.Where(p => Filter.IsEnabled(p.name.id)).ToList();
         }
 
         private static bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null)
@@ -284,11 +300,6 @@ namespace Omni
             }
 
             return false;
-        }
-
-        private static void UpdateFilteredProviders()
-        {
-            Filter.filteredProviders = Providers.Where(p => Filter.IsEnabled(p.name.id)).ToList();
         }
 
         private static void FetchProviders()
@@ -324,12 +335,32 @@ namespace Omni
             return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
         }
 
-        private static void SetFilters(string filtersStr)
+        private static void LoadFilters()
         {
-            var filters = filtersStr.Split(',');
-            foreach (var filterDesc in filters)
+            var filtersExpandedStr = EditorPrefs.GetString(k_KFilterExpandedPrefKey, null);
+            if (filtersExpandedStr != null)
             {
-                var filter = filterDesc.Split(':');
+                var filtersExpanded = filtersExpandedStr.Split(',');
+                foreach (var filterExpanded in filtersExpanded)
+                {
+                    var desc = Filter.model.Find(p => p.entry.name.id == filterExpanded);
+                    if (desc != null)
+                        desc.isExpanded = true;
+                }
+            }
+
+            var filtersStr = EditorPrefs.GetString(k_KFilterPrefKey, null);
+            Debug.Log("Load filters: " + filtersStr);
+            if (filtersStr == null)
+            {
+                ResetFilter(true);
+                return;
+            }
+
+            var filters = filtersStr.Split(',');
+            foreach (var filterStr in filters)
+            {
+                var filter = filterStr.Split(':');
                 if (filter.Length == 2)
                 {
                     SetFilterInternal(true, filter[0], filter[1]);
@@ -368,17 +399,123 @@ namespace Omni
 
     internal class FilterWindow : EditorWindow
     {
-        public static bool ShowAtPosition(Rect rect, Vector2 windowSize)
+        static class Styles
+        {
+            public static float indent = 10f;
+            public static Vector2 windowSize = new Vector2(175, 200);
+            public static float rowHeight = 15;
+
+            public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
+            {
+                name = "omni-tool-filter-header",
+                // padding = new RectOffset(2, 2, 1, 2),
+                margin = new RectOffset(4, 4, 0, 4)
+            };
+
+            public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label)
+            {
+                name = "omni-tool-filter-entry"
+            };
+
+            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle")
+            {
+                name = "omni-tool-filter-toggle",
+                // padding = new RectOffset(2, 2, 1, 2),
+                // margin = new RectOffset(4, 4, 6, 4)
+            };
+
+            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout")
+            {
+                name = "omni-tool-filter-expanded",
+                // padding = new RectOffset(2, 2, 1, 2),
+                // margin = new RectOffset(4, 4, 6, 4)
+            };
+
+            public static float foldoutIndent = filterExpanded.fixedWidth + 6;
+        }
+
+        public OmniTool omniTool;
+
+        Vector2 m_ScrollPos;
+
+        public static bool ShowAtPosition(OmniTool omniTool, Rect rect)
         {
             var screenRect = GUIUtility.GUIToScreenRect(rect);
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
-            filterWindow.ShowAsDropDown(screenRect, windowSize);
+            // var filterWindow = GetWindow<FilterWindow>();
+            filterWindow.omniTool = omniTool;
+            filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
             return true;
         }
 
         void OnGUI()
         {
+            m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
 
+            GUILayout.Space(Styles.indent);
+            foreach (var providerDesc in OmniService.Filter.model)
+            {
+                DrawSectionHeader(providerDesc);
+                if (providerDesc.isExpanded)
+                    DrawSubCategories(providerDesc);
+            }
+
+            GUILayout.Space(Styles.indent);
+            GUILayout.EndScrollView();
+        }
+
+        void DrawSectionHeader(OmniFilter.ProviderDesc desc)
+        {
+            // filterHeader
+            GUILayout.BeginHorizontal();
+
+            if (desc.categories.Count > 0)
+            {
+                EditorGUI.BeginChangeCheck();
+                bool isExpanded = GUILayout.Toggle(desc.isExpanded, "", Styles.filterExpanded);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    OmniService.SetExpanded(isExpanded, desc.entry.name.id);
+                }
+            }
+            else
+            {
+                GUILayout.Space(Styles.foldoutIndent);
+            }
+
+            GUILayout.Label(desc.entry.name.displayName, Styles.filterHeader);
+            GUILayout.FlexibleSpace();
+
+            EditorGUI.BeginChangeCheck();
+            bool isEnabled = GUILayout.Toggle(desc.entry.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
+            if (EditorGUI.EndChangeCheck())
+            {
+                OmniService.SetFilter(isEnabled, desc.entry.name.id);
+                omniTool.Refresh();
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        void DrawSubCategories(OmniFilter.ProviderDesc desc)
+        {
+            foreach (var cat in desc.categories)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(Styles.foldoutIndent + 5);
+                GUILayout.Label(cat.name.displayName, Styles.filterEntry);
+                GUILayout.FlexibleSpace();
+
+                EditorGUI.BeginChangeCheck();
+                bool isEnabled = GUILayout.Toggle(cat.isEnabled, "", Styles.filterToggle);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    OmniService.SetFilter(isEnabled, desc.entry.name.id, cat.name.id);
+                    omniTool.Refresh();
+                }
+
+                GUILayout.EndHorizontal();
+            }
         }
     }
 
@@ -545,10 +682,6 @@ namespace Omni
             public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField) { name = "omni-tool-search-field" };
             public static readonly GUIStyle searchFieldClear = new GUIStyle("ToolbarSeachCancelButton") { name = "omni-tool-search-field-clear" };
             public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.toolbarDropDown) { name = "omni-tool-filter-button" };
-            public static readonly GUIStyle filterHeader = new GUIStyle("BoldLabel") { name = "omni-tool-filter-header" };
-            public static readonly GUIStyle filterEntry = new GUIStyle("label") { name = "omni-tool-filter-entry" };
-            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle") { name = "omni-tool-filter-toggle" };
-
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
                 Texture2D texture = new Texture2D(1, 1);
@@ -586,6 +719,13 @@ namespace Omni
             DrawItems(context);
 
             UpdateFocusControlState();
+        }
+
+        public void Refresh()
+        {
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
+            m_FilteredItems = OmniService.GetItems(context).ToList();
+            Repaint();
         }
 
         private void UpdateFocusControlState()
@@ -626,7 +766,7 @@ namespace Omni
             m_ScrollPosition = GUILayout.BeginScrollView(m_ScrollPosition);
 
             int rowIndex = 0;
-            foreach (var item in m_FilteredItems.Take(10))
+            foreach (var item in m_FilteredItems)
                 DrawItem(item, context, rowIndex++);
             GUILayout.EndScrollView();
         }
@@ -659,7 +799,7 @@ namespace Omni
                 var rightRect = GUILayoutUtility.GetLastRect();
                 if (EditorGUILayout.DropdownButton(Styles.filterButtonContent, FocusType.Passive, Styles.filterButton, GUILayout.MaxWidth(70f)))
                 {
-                    if (FilterWindow.ShowAtPosition(rightRect, new Vector2(100, 200)))
+                    if (FilterWindow.ShowAtPosition(this, rightRect))
                     {
                         GUIUtility.ExitGUI();
                     }
@@ -763,24 +903,6 @@ namespace Omni
             internal static string displayName = "Asset";
             /* Filters:
                  t:<type>
-                 AnimationClip
-                 AudioClip
-                 AudioMixer
-                 ComputeShader
-                 Font
-                 GUISKin
-                 Material
-                 Mesh
-                 Model
-                 PhysicMaterial
-                 PRefab
-                 Scene
-                 Script
-                 Shader
-                 Sprite
-                 Texture
-                 VideoClip
-
                 l:<label>
                 ref[:id]:path
                 v:<versionState>
@@ -791,11 +913,19 @@ namespace Omni
             [UsedImplicitly, OmniItemProvider]
             internal static OmniProvider CreateProvider()
             {
-                return new OmniProvider(type, displayName)
+                var provider = new OmniProvider(type, displayName)
                 {
                     fetchItems = (context) =>
                     {
-                        return AssetDatabase.FindAssets(context.searchText).Select(guid =>
+                        var filter = context.searchText;
+                        if (context.categories.Any(c => !c.isEnabled))
+                        {
+                            // Not all categories are enabled, so create a proper filter:
+                            filter = string.Join(" ", context.categories.Where(c => c.isEnabled).Select(c => "t:" + c.name.id)) + filter;
+                            Debug.Log("Asset filter string: " + filter);
+                        }
+
+                        return AssetDatabase.FindAssets(filter).Select(guid =>
                         {
                             var path = AssetDatabase.GUIDToAssetPath(guid);
                             long fileSize = 0;
@@ -817,8 +947,36 @@ namespace Omni
                         if (obj != null)
                             return AssetPreview.GetMiniThumbnail(obj);
                         return null;
-                    }
+                    },
+
+                    subCategories = new List<OmniName>()
                 };
+
+                foreach (var subCat in new []
+                {
+                    "AnimationClip",
+                    "AudioClip",
+                    "AudioMixer",
+                    "ComputeShader",
+                    "Font",
+                    "GUISKin",
+                    "Material",
+                    "Mesh",
+                    "Model",
+                    "PhysicMaterial",
+                    "Prefab",
+                    "Scene",
+                    "Script",
+                    "Shader",
+                    "Sprite",
+                    "Texture",
+                    "VideoClip"
+                })
+                {
+                    provider.subCategories.Add(new OmniName(subCat));
+                }
+
+                return provider;
             }
 
             [UsedImplicitly, OmniActionsProvider]
