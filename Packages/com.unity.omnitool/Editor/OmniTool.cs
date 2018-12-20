@@ -160,7 +160,7 @@ namespace Omni
             actions = new List<OmniAction>();
             fetchItems = (context) => new OmniItem[0];
             generatePreview = (item, context) => null;
-            fetchDescription = (item, context) => item.description;
+            fetchDescription = (item, context) => item.description ?? String.Empty;
             subCategories = new List<OmniName>();
         }
 
@@ -925,7 +925,7 @@ namespace Omni
                 {
                     var textMaxWidthLayoutOption = GUILayout.MaxWidth(position.width * 0.7f);
                     GUILayout.Label(item.label ?? item.id, Styles.itemLabel, textMaxWidthLayoutOption);
-                    GUILayout.Label(item.provider.fetchDescription(item, context), Styles.itemDescription, textMaxWidthLayoutOption);
+                    GUILayout.Label(item.description ?? item.provider.fetchDescription(item, context), Styles.itemDescription, textMaxWidthLayoutOption);
                 }
                 GUILayout.EndVertical();
 
@@ -1001,7 +1001,7 @@ namespace Omni
                             {
                                 id = path,
                                 label = Path.GetFileName(path),
-                                description = path
+                                description = null // Deferred within fetchDescription below
                             };
                         });
                     },
@@ -1009,9 +1009,10 @@ namespace Omni
                     fetchDescription = (item, context) =>
                     {
                         if (AssetDatabase.IsValidFolder(item.id))
-                            return item.description;
+                            return item.id;
                         long fileSize = Math.Max(1024, new FileInfo(item.id).Length);
-                        return $"{item.id} ({fileSize / 1024} kb)";
+                        item.description = $"{item.id} ({fileSize / 1024} kb)";
+                        return item.description;
                     },
 
                     generatePreview = (item, context) =>
