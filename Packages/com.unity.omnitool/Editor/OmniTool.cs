@@ -10,13 +10,39 @@ using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+using Object = UnityEngine.Object;
 
 namespace Omni
 { 
     public delegate Texture2D PreviewHandler(OmniItem item, OmniContext context);
+    public delegate string DescriptionHandler(OmniItem item, OmniContext context);
     public delegate void ActionHandler(OmniItem item, OmniContext context);
     public delegate bool EnabledHandler(OmniItem item, OmniContext context);
     public delegate IEnumerable<OmniItem> GetItemsHandler(OmniContext context);
+
+    internal struct DebugTimer : IDisposable
+    {
+        private bool m_Disposed;
+        private string m_Name;
+        private Stopwatch m_Timer;
+
+        public DebugTimer(string name)
+        {
+            m_Disposed = false;
+            m_Name = name;
+            m_Timer = Stopwatch.StartNew();
+        }
+
+        public void Dispose()
+        {
+            if (m_Disposed)
+                return;
+            m_Disposed = true;
+            m_Timer.Stop();
+            TimeSpan timespan = m_Timer.Elapsed;
+            Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
+        }
+    }
 
     public class OmniAction
     {
@@ -134,6 +160,7 @@ namespace Omni
             actions = new List<OmniAction>();
             fetchItems = (context) => new OmniItem[0];
             generatePreview = (item, context) => null;
+            fetchDescription = (item, context) => item.description;
             subCategories = new List<OmniName>();
         }
 
@@ -178,6 +205,7 @@ namespace Omni
         }
 
         public OmniName name;
+        public DescriptionHandler fetchDescription;
         public PreviewHandler generatePreview;
         public GetItemsHandler fetchItems;
         public List<OmniAction> actions;
@@ -212,18 +240,21 @@ namespace Omni
             LoadFilters();
         }
 
-        public static OmniFilter Filter { get; private set; }
+        public static OmniFilter Filter { get; }
         
         public static IEnumerable<OmniItem> GetItems(OmniContext context)
         {
             return Filter.filteredProviders.SelectMany(provider =>
             {
                 context.categories = Filter.GetSubCategories(provider);
-                return provider.fetchItems(context).Select(item =>
+                using (new DebugTimer($"{provider.name.id} fetch items"))
                 {
-                    item.provider = provider;
-                    return item;
-                });
+                    return provider.fetchItems(context).Select(item =>
+                                    {
+                                        item.provider = provider;
+                                        return item;
+                                    });
+                }
             });
         }
 
@@ -252,7 +283,6 @@ namespace Omni
                 providerDesc.isExpanded = isExpanded;
 
                 var filtersExpandedStr = string.Join(",", Filter.model.Where(pd => pd.isExpanded).Select(pd => pd.entry.name.id));
-                Debug.Log("Save filter expanded: " + filtersExpandedStr);
                 EditorPrefs.SetString(k_KFilterExpandedPrefKey, filtersExpandedStr);
             }
         }
@@ -348,7 +378,6 @@ namespace Omni
             }
 
             var filtersStr = EditorPrefs.GetString(k_KFilterPrefKey, null);
-            Debug.Log("Load filters: " + filtersStr);
             if (filtersStr == null)
             {
                 ResetFilter(true);
@@ -390,7 +419,6 @@ namespace Omni
         private static void SaveFilters()
         {
             var filter = FilterToString();
-            Debug.Log("Save filters: "  + filter);
             EditorPrefs.SetString(k_KFilterPrefKey, filter);
         }
     }
@@ -401,33 +429,17 @@ namespace Omni
         {
             public static float indent = 10f;
             public static Vector2 windowSize = new Vector2(175, 200);
-            public static float rowHeight = 15;
 
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
             {
                 name = "omni-tool-filter-header",
-                // padding = new RectOffset(2, 2, 1, 2),
                 margin = new RectOffset(4, 4, 0, 4)
             };
 
-            public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label)
-            {
-                name = "omni-tool-filter-entry"
-            };
-
-            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle")
-            {
-                name = "omni-tool-filter-toggle",
-                // padding = new RectOffset(2, 2, 1, 2),
-                // margin = new RectOffset(4, 4, 6, 4)
-            };
-
-            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout")
-            {
-                name = "omni-tool-filter-expanded",
-                // padding = new RectOffset(2, 2, 1, 2),
-                // margin = new RectOffset(4, 4, 6, 4)
-            };
+            public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label) { name = "omni-tool-filter-entry" };
+            public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "omni-tool-filter-panel-border" };
+            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle") { name = "omni-tool-filter-toggle" };
+            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout") { name = "omni-tool-filter-expanded" };
 
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }
@@ -446,8 +458,11 @@ namespace Omni
             return true;
         }
 
-        void OnGUI()
+        [UsedImplicitly]
+        internal void OnGUI()
         {
+            GUI.Box(new Rect(0, 0, position.width, position.height), GUIContent.none, Styles.panelBorder);
+
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
 
             GUILayout.Space(Styles.indent);
@@ -690,6 +705,7 @@ namespace Omni
             public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField) { name = "omni-tool-search-field" };
             public static readonly GUIStyle searchFieldClear = new GUIStyle("ToolbarSeachCancelButton") { name = "omni-tool-search-field-clear" };
             public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.toolbarDropDown) { name = "omni-tool-filter-button" };
+            
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
                 Texture2D texture = new Texture2D(1, 1);
@@ -705,30 +721,6 @@ namespace Omni
             }
         }
 
-        internal struct DebugTimer : IDisposable
-        {
-            private bool m_Disposed;
-            private string m_Name;
-            private Stopwatch m_Timer;
-
-            public DebugTimer(string name)
-            {
-                m_Disposed = false;
-                m_Name = name;
-                m_Timer = Stopwatch.StartNew();
-            }
-
-            public void Dispose()
-            {
-                if (m_Disposed)
-                    return;
-                m_Disposed = true;
-                m_Timer.Stop();
-                TimeSpan timespan = m_Timer.Elapsed;
-                Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
-            }
-        }
-
         [UsedImplicitly]
         internal void OnEnable()
         {
@@ -736,30 +728,27 @@ namespace Omni
             lastFocusedWindow = s_FocusedWindow;
             titleContent.text = "Search Anything!";
             titleContent.image = OmniIcon.omnitool;
-
-            Debug.Log("Service Filter: " + OmniService.FilterToString());
         }
 
         [UsedImplicitly]
         internal void OnGUI()
         {
-            //using (new DebugTimer($"OnGUI.{Event.current.type}"))
-            {
-                var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
 
-                HandleKeyboardNavigation();
+            HandleKeyboardNavigation();
 
-                DrawToolbar(context);
-                DrawItems(context);
+            DrawToolbar(context);
+            DrawItems(context);
 
-                UpdateFocusControlState();
-            }
+            UpdateFocusControlState();
         }
 
         public void Refresh()
         {
-            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
+			var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow };
             m_FilteredItems = OmniService.GetItems(context).ToList();
+            m_SelectedIndex = -1;
+            titleContent.text = $"Filtered {m_FilteredItems.Count} Anything!";
             Repaint();
         }
 
@@ -874,7 +863,8 @@ namespace Omni
                 if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
                 {
                     m_SelectedIndex = -1;
-                    m_FilteredItems = OmniService.GetItems(context).ToList();
+                    using (new DebugTimer("GetItems"))
+                        m_FilteredItems = OmniService.GetItems(context).ToList();
                     titleContent.text = $"Found {m_FilteredItems.Count} Anything!";
                 }
 
@@ -935,7 +925,7 @@ namespace Omni
                 {
                     var textMaxWidthLayoutOption = GUILayout.MaxWidth(position.width * 0.7f);
                     GUILayout.Label(item.label ?? item.id, Styles.itemLabel, textMaxWidthLayoutOption);
-                    GUILayout.Label(item.description, Styles.itemDescription, textMaxWidthLayoutOption);
+                    GUILayout.Label(item.provider.fetchDescription(item, context), Styles.itemDescription, textMaxWidthLayoutOption);
                 }
                 GUILayout.EndVertical();
 
@@ -1002,23 +992,26 @@ namespace Omni
                         {
                             // Not all categories are enabled, so create a proper filter:
                             filter = string.Join(" ", context.categories.Where(c => c.isEnabled).Select(c => "t:" + c.name.id)) + filter;
-                            Debug.Log("Asset filter string: " + filter);
                         }
 
                         return AssetDatabase.FindAssets(filter).Select(guid =>
                         {
                             var path = AssetDatabase.GUIDToAssetPath(guid);
-                            long fileSize = 0;
-                            bool isFile = File.Exists(path);
-                            if (isFile)
-                                fileSize = Math.Max(1024, new FileInfo(path).Length);
                             return new OmniItem
                             {
                                 id = path,
                                 label = Path.GetFileName(path),
-                                description = isFile ? $"{path} ({fileSize / 1024} kb)" : $"{path} (folder)"
+                                description = path
                             };
                         });
+                    },
+
+                    fetchDescription = (item, context) =>
+                    {
+                        if (AssetDatabase.IsValidFolder(item.id))
+                            return item.description;
+                        long fileSize = Math.Max(1024, new FileInfo(item.id).Length);
+                        return $"{item.id} ({fileSize / 1024} kb)";
                     },
 
                     generatePreview = (item, context) =>
@@ -1068,24 +1061,27 @@ namespace Omni
                 // Copy path
                 return new[]
                 {
-                new OmniAction("asset", "select", OmniIcon.@goto, "Select asset...") { handler = (item, context) =>
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
-                    if (asset != null)
+                    new OmniAction("asset", "select", OmniIcon.@goto, "Select asset...")
                     {
-                        Selection.activeObject = asset;
-                        EditorGUIUtility.PingObject(asset);
-                    }
-                }},
-                new OmniAction("asset", "open", OmniIcon.open, "Open asset...") { handler = (item, context) =>
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.id);
-                    if (asset != null)
+                        handler = (item, context) =>
+                        {
+                            var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                            if (asset != null)
+                            {
+                                Selection.activeObject = asset;
+                                EditorGUIUtility.PingObject(asset);
+                            }
+                        }
+                    },
+                    new OmniAction("asset", "open", OmniIcon.open, "Open asset...")
                     {
-                        AssetDatabase.OpenAsset(asset);
+                        handler = (item, context) =>
+                        {
+                            var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                            if (asset != null) AssetDatabase.OpenAsset(asset);
+                        }
                     }
-                }}
-            };
+                };
             }
         }
 
