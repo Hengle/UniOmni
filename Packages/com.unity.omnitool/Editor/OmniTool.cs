@@ -528,6 +528,16 @@ namespace Omni
 
         Vector2 m_ScrollPos;
 
+        internal static double s_CloseTime;
+        internal static bool canShow {
+            get
+            {
+                if (EditorApplication.timeSinceStartup - s_CloseTime < 0.250)
+                    return false;
+                return true;
+            }
+        }
+
         public static bool ShowAtPosition(OmniTool omniTool, Rect rect)
         {
             var screenRect = GUIUtility.GUIToScreenRect(rect);
@@ -535,6 +545,12 @@ namespace Omni
             filterWindow.omniTool = omniTool;
             filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
             return true;
+        }
+
+        [UsedImplicitly]
+        internal void OnDestroy()
+        {
+            s_CloseTime = EditorApplication.timeSinceStartup;
         }
 
         [UsedImplicitly]
@@ -1017,9 +1033,12 @@ namespace Omni
                 var rightRect = GUILayoutUtility.GetLastRect();
                 if (EditorGUILayout.DropdownButton(Styles.filterButtonContent, FocusType.Passive, Styles.filterButton, GUILayout.MaxWidth(32f)))
                 {
-                    rightRect.x -= 130f;
-                    if (FilterWindow.ShowAtPosition(this, rightRect))
-                        GUIUtility.ExitGUI();
+                    if (FilterWindow.canShow)
+                    {
+                        rightRect.x -= 130f;
+                        if (FilterWindow.ShowAtPosition(this, rightRect))
+                            GUIUtility.ExitGUI();
+                    }
                 }
             }
             GUILayout.EndHorizontal();
