@@ -388,6 +388,7 @@ namespace Omni
         public static Texture2D @goto = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/goto.png");
         public static Texture2D shortcut = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/shortcut.png");
         public static Texture2D execute = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/execute.png");
+        public static Texture2D omnitool = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/omnitool.png");
 
         static OmniIcon()
         {
@@ -398,6 +399,7 @@ namespace Omni
                 @goto = LightenTexture(@goto);
                 shortcut = LightenTexture(shortcut);
                 execute = LightenTexture(execute);
+                omnitool = LightenTexture(omnitool);
             }
         }
 
@@ -539,37 +541,13 @@ namespace Omni
                 margin = new RectOffset(0, 0, 0, 0),
                 padding = new RectOffset(4, 0, 0, 0)
             };
-                
 
-            public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField)
-            {
-                name = "omni-tool-search-field"
-            };
-
-            public static readonly GUIStyle searchFieldClear = new GUIStyle("ToolbarSeachCancelButton")
-            {
-                name = "omni-tool-search-field-clear"
-            };
-
-            public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.toolbarDropDown)
-            {
-                name = "omni-tool-filter-button"
-            };
-
-            public static readonly GUIStyle filterHeader = new GUIStyle("BoldLabel")
-            {
-                name = "omni-tool-filter-header"
-            };
-
-            public static readonly GUIStyle filterEntry = new GUIStyle("label")
-            {
-                name = "omni-tool-filter-entry"
-            };
-
-            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle")
-            {
-                name = "omni-tool-filter-toggle"
-            };
+            public static readonly GUIStyle searchField = new GUIStyle(EditorStyles.toolbarSearchField) { name = "omni-tool-search-field" };
+            public static readonly GUIStyle searchFieldClear = new GUIStyle("ToolbarSeachCancelButton") { name = "omni-tool-search-field-clear" };
+            public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.toolbarDropDown) { name = "omni-tool-filter-button" };
+            public static readonly GUIStyle filterHeader = new GUIStyle("BoldLabel") { name = "omni-tool-filter-header" };
+            public static readonly GUIStyle filterEntry = new GUIStyle("label") { name = "omni-tool-filter-entry" };
+            public static readonly GUIStyle filterToggle = new GUIStyle("OL Toggle") { name = "omni-tool-filter-toggle" };
 
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
@@ -592,7 +570,7 @@ namespace Omni
             m_OmniSearchBoxFocus = true;
             lastFocusedWindow = s_FocusedWindow;
             titleContent.text = "Search Anything!";
-            titleContent.image = EditorGUIUtility.IconContent("winbtn_mac_max").image;
+            titleContent.image = OmniIcon.omnitool;
 
             Debug.Log("Service Filter: " + OmniService.FilterToString());
         }
