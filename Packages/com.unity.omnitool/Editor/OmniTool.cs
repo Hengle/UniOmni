@@ -542,6 +542,7 @@ namespace Omni
         public static Texture2D shortcut = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/shortcut.png");
         public static Texture2D execute = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/execute.png");
         public static Texture2D omnitool = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/omnitool@2x.png");
+        public static Texture2D filter = EditorGUIUtility.FindTexture("Packages/com.unity.omnitool/Editor/Icons/filter.png");
 
         static OmniIcon()
         {
@@ -553,6 +554,7 @@ namespace Omni
                 shortcut = LightenTexture(shortcut);
                 execute = LightenTexture(execute);
                 omnitool = LightenTexture(omnitool);
+                filter = LightenTexture(filter);
             }
         }
 
@@ -627,7 +629,7 @@ namespace Omni
             private static readonly Texture2D buttonPressedBackgroundImage = GenerateSolidColorTexture(new Color(111/255f, 111/255f, 111/255f));
             private static readonly Texture2D buttonHoveredBackgroundImage = GenerateSolidColorTexture(new Color(71/255f, 71/255f, 71/255f));
 
-            public static readonly GUIContent filterButtonContent = new GUIContent("filter");
+            public static readonly GUIContent filterButtonContent = new GUIContent("", OmniIcon.filter, "Filter omni results...");
 
             public static readonly GUIStyle itemBackground1 = new GUIStyle
             {
@@ -908,12 +910,11 @@ namespace Omni
                 }
 
                 var rightRect = GUILayoutUtility.GetLastRect();
-                if (EditorGUILayout.DropdownButton(Styles.filterButtonContent, FocusType.Passive, Styles.filterButton, GUILayout.MaxWidth(70f)))
+                if (EditorGUILayout.DropdownButton(Styles.filterButtonContent, FocusType.Passive, Styles.filterButton, GUILayout.MaxWidth(32f)))
                 {
+                    rightRect.x -= 130f;
                     if (FilterWindow.ShowAtPosition(this, rightRect))
-                    {
                         GUIUtility.ExitGUI();
-                    }
                 }
             }
             GUILayout.EndHorizontal();
