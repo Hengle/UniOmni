@@ -1060,10 +1060,25 @@ namespace Omni
                     fetchItems = (context) =>
                     {
                         var filter = context.searchText;
-                        if (context.categories.Any(c => !c.isEnabled))
+                        var areas = context.categories.GetRange(0, areaFilter.Length);
+
+                        if (areas.All(c => !c.isEnabled))
+                            return new OmniItem[0];
+
+                        if (areas.Any(c => !c.isEnabled))
                         {
                             // Not all categories are enabled, so create a proper filter:
-                            filter = string.Join(" ", context.categories.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                            filter = string.Join(" ", areas.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                        }
+
+                        var types = context.categories.GetRange(areaFilter.Length, context.categories.Count - areaFilter.Length);
+                        if (types.All(c => !c.isEnabled))
+                            return new OmniItem[0];
+
+                        if (types.Any(c => !c.isEnabled))
+                        {
+                            // Not all categories are enabled, so create a proper filter:
+                            filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
                         }
 
                         Debug.Log("asset filter: " + filter);
