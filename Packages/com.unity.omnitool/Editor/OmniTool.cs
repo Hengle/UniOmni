@@ -213,7 +213,7 @@ namespace Omni
         public List<OmniName> subCategories;
     }
 
-    public struct OmniContext
+    public class OmniContext
     {
         public string searchText;
         public EditorWindow focusedWindow;
@@ -756,7 +756,7 @@ namespace Omni
 
         public void Refresh()
         {
-			var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
+            var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
             m_FilteredItems = OmniService.GetItems(context).ToList();
             m_SelectedIndex = -1;
             titleContent.text = $"Filtered {m_FilteredItems.Count} Anything!";
@@ -765,6 +765,9 @@ namespace Omni
 
         private void UpdateFocusControlState()
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
             if (m_OmniSearchBoxFocus)
             {
                 m_OmniSearchBoxFocus = false;
@@ -775,7 +778,9 @@ namespace Omni
         private void HandleKeyboardNavigation()
         {
             // TODO: support page down and page up
-
+            // TIDI: add support for left and right arrow key to change action
+            // TODO: add support for space and enter key to trigger selected action
+            
             var evt = Event.current;
             if (evt.type == EventType.KeyDown)
             {
@@ -796,6 +801,9 @@ namespace Omni
                 if (prev != m_SelectedIndex)
                     m_FocusSelectedItem = true;
             }
+
+            if (m_FilteredItems == null || m_FilteredItems.Count == 0)
+                m_OmniSearchBoxFocus = true;
         }
 
         private void DrawItems(OmniContext context)
@@ -819,7 +827,6 @@ namespace Omni
                     if (topSpaceSkipped > 0)
                         GUILayout.Space(topSpaceSkipped);
 
-                    //Debug.Log($"{itemSkipCount} - {itemDisplayCount} - {itemCount} - {itemCount - itemSkipCount} - {limitCount}");
                     foreach (var item in m_FilteredItems.GetRange(itemSkipCount, limitCount))
                         DrawItem(item, context, rowIndex++);
 
@@ -879,9 +886,11 @@ namespace Omni
                 {
                     m_SelectedIndex = -1;
                     context.searchText = m_SearchText = "";
+                    m_FilteredItems = OmniService.GetItems(context).ToList();
                     titleContent.text = "Search Anything!";
+                    GUI.FocusControl(null);
                 }
-                
+
                 if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
                 {
                     m_SelectedIndex = -1;
@@ -1042,17 +1051,19 @@ namespace Omni
                         if (item.thumbnail)
                             return item.thumbnail;
 
-//                         if (context.totalItemCount < 100)
-//                         {
-//                             var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-//                             if (obj != null)
-//                                 item.thumbnail = AssetPreview.GetAssetPreview(obj);
-//                         }
-                        //if (item.thumbnail == null)
-                          //  item.thumbnail = AssetDatabase.GetCachedIcon(item.id) as Texture2D;
-                        if (item.thumbnail == null)
-                            item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(item.id);
+                        if (context.totalItemCount < 100)
+                        {
+                            var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                            if (obj != null)
+                                item.thumbnail = AssetPreview.GetAssetPreview(obj);
+                            if (item.thumbnail)
+                                return item.thumbnail;
+                        }
+                        item.thumbnail = AssetDatabase.GetCachedIcon(item.id) as Texture2D;
+                        if (item.thumbnail)
+                            return item.thumbnail;
 
+                        item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(item.id);
                         return item.thumbnail;
                     },
 
