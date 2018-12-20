@@ -243,19 +243,20 @@ namespace Omni
         }
 
         public static OmniFilter Filter { get; }
-        
+
         public static IEnumerable<OmniItem> GetItems(OmniContext context)
         {
             return Filter.filteredProviders.SelectMany(provider =>
             {
                 context.categories = Filter.GetSubCategories(provider);
-                using (new DebugTimer($"{provider.name.id} fetch items"))
+
+                //using (new DebugTimer($"{provider.name.id} fetch items"))
                 {
                     return provider.fetchItems(context).Select(item =>
-                                    {
-                                        item.provider = provider;
-                                        return item;
-                                    });
+                    {
+                        item.provider = provider;
+                        return item;
+                    });
                 }
             });
         }
@@ -737,8 +738,16 @@ namespace Omni
         {
             m_OmniSearchBoxFocus = true;
             lastFocusedWindow = s_FocusedWindow;
-            titleContent.text = "Search Anything!";
+            UpdateWindowTitle();
+        }
+
+        private void UpdateWindowTitle()
+        {
             titleContent.image = OmniIcon.omnitool;
+            if (m_FilteredItems == null || m_FilteredItems.Count == 0)
+                titleContent.text = "Search Anything!";
+            else
+                titleContent.text = $"Found {m_FilteredItems.Count} Anything!";
         }
 
         [UsedImplicitly]
@@ -759,7 +768,7 @@ namespace Omni
             var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
             m_FilteredItems = OmniService.GetItems(context).ToList();
             m_SelectedIndex = -1;
-            titleContent.text = $"Filtered {m_FilteredItems.Count} Anything!";
+            UpdateWindowTitle();
             Repaint();
         }
 
@@ -778,7 +787,7 @@ namespace Omni
         private void HandleKeyboardNavigation()
         {
             // TODO: support page down and page up
-            // TIDI: add support for left and right arrow key to change action
+            // TODO: add support for left and right arrow key to change action
             // TODO: add support for space and enter key to trigger selected action
             
             var evt = Event.current;
@@ -886,8 +895,7 @@ namespace Omni
                 {
                     m_SelectedIndex = -1;
                     context.searchText = m_SearchText = "";
-                    m_FilteredItems = OmniService.GetItems(context).ToList();
-                    titleContent.text = "Search Anything!";
+                    GUI.changed = true;
                     GUI.FocusControl(null);
                 }
 
@@ -896,7 +904,7 @@ namespace Omni
                     m_SelectedIndex = -1;
                     using (new DebugTimer("GetItems"))
                         m_FilteredItems = OmniService.GetItems(context).ToList();
-                    titleContent.text = $"Found {m_FilteredItems.Count} Anything!";
+                    UpdateWindowTitle();
                 }
 
                 var rightRect = GUILayoutUtility.GetLastRect();
