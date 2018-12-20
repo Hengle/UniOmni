@@ -18,7 +18,7 @@ namespace Omni
     public delegate string DescriptionHandler(OmniItem item, OmniContext context);
     public delegate void ActionHandler(OmniItem item, OmniContext context);
     public delegate bool EnabledHandler(OmniItem item, OmniContext context);
-    public delegate IEnumerable<OmniItem> GetItemsHandler(OmniContext context);
+    public delegate void GetItemsHandler(OmniContext context, List<OmniItem> items, OmniProvider provider);
 
     internal struct DebugTimer : IDisposable
     {
@@ -159,7 +159,7 @@ namespace Omni
         {
             name = new OmniName(id, displayName);
             actions = new List<OmniAction>();
-            fetchItems = (context) => new OmniItem[0];
+            fetchItems = (context, items, provider) => { };
             fetchThumbnail = (item, context) => item.thumbnail ?? OmniIcon.omnitool;
             fetchDescription = (item, context) => item.description ?? String.Empty;
             subCategories = new List<OmniName>();
@@ -244,21 +244,20 @@ namespace Omni
 
         public static OmniFilter Filter { get; }
 
-        public static IEnumerable<OmniItem> GetItems(OmniContext context)
+        public static List<OmniItem> GetItems(OmniContext context)
         {
-            return Filter.filteredProviders.SelectMany(provider =>
-            {
-                context.categories = Filter.GetSubCategories(provider);
+            List<OmniItem> allItems = new List<OmniItem>(100);
 
-                //using (new DebugTimer($"{provider.name.id} fetch items"))
+            foreach (var provider in Filter.filteredProviders)
+            {
+                using (new DebugTimer($"{provider.name.id} fetch items"))
                 {
-                    return provider.fetchItems(context).Select(item =>
-                    {
-                        item.provider = provider;
-                        return item;
-                    });
+                    context.categories = Filter.GetSubCategories(provider);
+                    provider.fetchItems(context, allItems, provider);
                 }
-            });
+            }
+
+            return allItems;
         }
 
         public static void ResetFilter(bool enableAll)
@@ -773,7 +772,7 @@ namespace Omni
         public void Refresh()
         {
             var context = new OmniContext { searchText = m_SearchText, focusedWindow = lastFocusedWindow, totalItemCount = -1 };
-            m_FilteredItems = OmniService.GetItems(context).ToList();
+            m_FilteredItems = OmniService.GetItems(context);
             m_SelectedIndex = -1;
             UpdateWindowTitle();
             Repaint();
@@ -910,7 +909,7 @@ namespace Omni
                 {
                     m_SelectedIndex = -1;
                     using (new DebugTimer("GetItems"))
-                        m_FilteredItems = OmniService.GetItems(context).ToList();
+                        m_FilteredItems = OmniService.GetItems(context);
                     UpdateWindowTitle();
                 }
 
@@ -1057,7 +1056,7 @@ namespace Omni
             {
                 var provider = new OmniProvider(type, displayName)
                 {
-                    fetchItems = (context) =>
+                    fetchItems = (context, items, _provider) =>
                     {
                         var filter = context.searchText;
                         var areas = context.categories.GetRange(0, areaFilter.Length);
@@ -1083,16 +1082,17 @@ namespace Omni
 
                         Debug.Log("asset filter: " + filter);
 
-                        return AssetDatabase.FindAssets(filter).Select(guid =>
+                        items.AddRange(AssetDatabase.FindAssets(filter).Select(guid => 
                         {
                             var path = AssetDatabase.GUIDToAssetPath(guid);
                             return new OmniItem
                             {
                                 id = path,
                                 label = Path.GetFileName(path),
-                                description = null // Deferred within fetchDescription below
+                                description = null, // Deferred within fetchDescription below
+                                provider = _provider
                             };
-                        });
+                        }));
                     },
 
                     fetchDescription = (item, context) =>
@@ -1184,18 +1184,19 @@ namespace Omni
             {
                 return new OmniProvider(type, displayName)
                 {
-                    fetchItems = (context) =>
+                    fetchItems = (context, items, provider) =>
                     {
                         var itemNames = new List<string>();
                         var shortcuts = new List<string>();
                         GetMenuInfo(itemNames, shortcuts);
 
-                        return itemNames.Where(menuName => OmniProvider.MatchSearchGroups(context.searchText, menuName)).Select(menuName => new OmniItem
+                        items.AddRange(itemNames.Where(menuName => OmniProvider.MatchSearchGroups(context.searchText, menuName)).Select(menuName => new OmniItem
                         {
                             id = menuName,
                             description = menuName,
-                            label = Path.GetFileName(menuName)
-                        });
+                            label = Path.GetFileName(menuName),
+                            provider = provider
+                        }));
                     },
 
                     fetchThumbnail = (item, context) => OmniIcon.shortcut
