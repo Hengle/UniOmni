@@ -165,6 +165,18 @@ namespace Omni
             subCategories = new List<OmniName>();
         }
 
+        public OmniItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null)
+        {
+            return new OmniItem()
+            {
+                id = id,
+                label = label ?? id,
+                description = description,
+                thumbnail = thumbnail,
+                provider = this
+            };
+        }
+
         public static bool MatchSearchGroups(string searchContext, string content)
         {
             return MatchSearchGroups(searchContext, content, out _, out _);
@@ -1097,16 +1109,10 @@ namespace Omni
                             filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
                         }
 
-                        items.AddRange(AssetDatabase.FindAssets(filter).Select(guid => 
+                        items.AddRange(AssetDatabase.FindAssets(filter).Take(1001).Select(guid => 
                         {
                             var path = AssetDatabase.GUIDToAssetPath(guid);
-                            return new OmniItem
-                            {
-                                id = path,
-                                label = Path.GetFileName(path),
-                                description = null, // Deferred within fetchDescription below
-                                provider = _provider
-                            };
+                            return _provider.CreateItem(path, Path.GetFileName(path));
                         }));
                     },
 
@@ -1205,13 +1211,9 @@ namespace Omni
                         var shortcuts = new List<string>();
                         GetMenuInfo(itemNames, shortcuts);
 
-                        items.AddRange(itemNames.Where(menuName => OmniProvider.MatchSearchGroups(context.searchText, menuName)).Select(menuName => new OmniItem
-                        {
-                            id = menuName,
-                            description = menuName,
-                            label = Path.GetFileName(menuName),
-                            provider = provider
-                        }));
+                        items.AddRange(itemNames.Where(menuName =>
+                                OmniProvider.MatchSearchGroups(context.searchText, menuName))
+                            .Select(menuName => provider.CreateItem(menuName, Path.GetFileName(menuName), menuName)));
                     },
 
                     fetchThumbnail = (item, context) => OmniIcon.shortcut
@@ -1257,13 +1259,9 @@ namespace Omni
                     fetchItems = (context, items, provider) =>
                     {
                         var providers = FetchSettingsProviders();
-                        items.AddRange(providers.Select(settings => new OmniItem
-                        {
-                            id = settings.settingsPath,
-                            description = settings.settingsPath,
-                            label = Path.GetFileName(settings.settingsPath),
-                            provider = provider
-                        }));
+                        items.AddRange(providers.Where(settings => 
+                            OmniProvider.MatchSearchGroups(context.searchText, settings.settingsPath))
+                            .Select(settings => provider.CreateItem(settings.settingsPath, Path.GetFileName(settings.settingsPath), settings.settingsPath)));
                     },
 
                     fetchThumbnail = (item, context) => OmniIcon.shortcut
