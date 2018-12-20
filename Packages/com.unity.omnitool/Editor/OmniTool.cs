@@ -904,6 +904,27 @@ namespace Omni
                     m_SelectedIndex = Math.Max(0, m_SelectedIndex - 1);
                     Event.current.Use();
                 }
+                else if (m_SelectedIndex > 0 && (evt.keyCode == KeyCode.KeypadEnter || evt.keyCode == KeyCode.Space || evt.keyCode == KeyCode.Return))
+                {
+                    int actionIndex = 0;
+                    if (evt.modifiers.HasFlag(EventModifiers.Alt))
+                    {
+                        actionIndex = 1;
+                        if (evt.modifiers.HasFlag(EventModifiers.Control))
+                        {
+                            actionIndex = 2;
+                            if (evt.modifiers.HasFlag(EventModifiers.Shift))
+                                actionIndex = 3;
+                        }
+                    }
+                    var item = m_FilteredItems.ElementAt(m_SelectedIndex);
+                    if (item.provider.actions.Any())
+                    {
+                        actionIndex = Math.Max(0, Math.Min(actionIndex, item.provider.actions.Count - 1));
+                        item.provider.actions[actionIndex].handler(item, new OmniContext());
+                        Event.current.Use();
+                    }
+                }
                 else
                     GUI.FocusControl("OmniSearchBox");
 
