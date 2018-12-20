@@ -9,6 +9,7 @@ using Omni.Providers;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
+using UnityScript.Scripting.Pipeline;
 using Debug = UnityEngine.Debug;
 using Object = UnityEngine.Object;
 
@@ -245,13 +246,29 @@ namespace Omni
     {
         const string k_KFilterPrefKey = "omnitool.filters";
         const string k_KFilterExpandedPrefKey = "omnitool.filters_expanded";
+        const string k_KRecentPrefKey = "omnitool.recent";
+
+        public struct RecentItem
+        {
+            public RecentItem(OmniItem item)
+            {
+                providerId = item.provider.name.id;
+                itemId = item.id;
+            }
+            public string providerId;
+            public string itemId;
+        }
+
         public static List<OmniProvider> Providers { get; private set; }
+        public static List<RecentItem> RecentItems { get; private set; }
 
         static OmniService()
         {
             Filter = new OmniFilter();
+            RecentItems = new List<RecentItem>();
             FetchProviders();
             LoadFilters();
+            LoadRecentItems();
         }
 
         public static OmniFilter Filter { get; }
@@ -260,14 +277,22 @@ namespace Omni
         {
             List<OmniItem> allItems = new List<OmniItem>(100);
 
-            foreach (var provider in Filter.filteredProviders)
+            if (!string.IsNullOrEmpty(context.searchText))
             {
-                using (new DebugTimer($"{provider.name.id} fetch items"))
+                foreach (var provider in Filter.filteredProviders)
                 {
-                    context.categories = Filter.GetSubCategories(provider);
-                    provider.fetchItems(context, allItems, provider);
+                    using (new DebugTimer($"{provider.name.id} fetch items"))
+                    {
+                        context.categories = Filter.GetSubCategories(provider);
+                        provider.fetchItems(context, allItems, provider);
+                    }
                 }
             }
+            else
+            {
+                // Recently used items
+            }
+            
 
             return allItems;
         }
@@ -299,6 +324,12 @@ namespace Omni
                 var filtersExpandedStr = string.Join(",", Filter.model.Where(pd => pd.isExpanded).Select(pd => pd.entry.name.id));
                 EditorPrefs.SetString(k_KFilterExpandedPrefKey, filtersExpandedStr);
             }
+        }
+
+        public static void AddRecentItem(OmniItem item)
+        {
+            RecentItems.Add(new RecentItem(item));
+            SaveRecentItems();
         }
 
         private static void FilterChanged()
@@ -434,6 +465,41 @@ namespace Omni
         {
             var filter = FilterToString();
             EditorPrefs.SetString(k_KFilterPrefKey, filter);
+        }
+
+        private static void LoadRecentItems()
+        {
+            var recentItemsStr = EditorPrefs.GetString(k_KRecentPrefKey, null);
+            if (recentItemsStr != null)
+            {
+                var recenItems = recentItemsStr.Split(',');
+                foreach (var recentItem in recenItems)
+                {
+                    var recentDesc = recentItem.Split(':');
+                    if (recentDesc.Length == 2)
+                    {
+                        RecentItems.Add(new RecentItem() { providerId = recentDesc[0], itemId = recentDesc[1] });
+                    }
+                }
+            }
+        }
+
+        private static bool RecentToItem(RecentItem recent, out OmniItem item)
+        {
+            var provider = Providers.Find(p => p.name.id == recent.providerId);
+            item = new OmniItem();
+            if (provider != null)
+            {
+                // provider.fetchItems();
+            }
+
+            return false;
+        }
+
+        private static void SaveRecentItems()
+        {
+            var recentItemsStr = string.Join(",", RecentItems.Select(item => $"{item.providerId}:{item.itemId}"));
+            EditorPrefs.SetString(k_KRecentPrefKey, recentItemsStr);
         }
     }
 
@@ -871,7 +937,7 @@ namespace Omni
                             if ((EditorApplication.timeSinceStartup - clickTime) < 0.2)
                             {
                                 var item = m_FilteredItems.ElementAt(m_SelectedIndex);
-                                item.provider.actions[0].handler(item, context);
+                                ExecuteAction(item.provider.actions[0], item, context);
                             }
                             Event.current.Use();
                         }
@@ -891,6 +957,12 @@ namespace Omni
                 }
             }
             GUILayout.EndScrollView();
+        }
+
+        private static void ExecuteAction(OmniAction action, OmniItem item, OmniContext context)
+        {
+            OmniService.AddRecentItem(item);
+            action.handler(item, context);
         }
 
         private void ScrollToItem(int start, int end, int selection)
@@ -1009,7 +1081,7 @@ namespace Omni
                 {
                     if (GUILayout.Button(action.content, Styles.actionButton))
                     {
-                        action.handler(item, context);
+                        ExecuteAction(action, item, context);
                         GUIUtility.ExitGUI();
                     }
                 }
